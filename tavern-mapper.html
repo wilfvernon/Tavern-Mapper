@@ -1,0 +1,3599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tavern Mapper — Table Control</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --panel-border: #2c3038;
+    --accent: #7c9cff;
+    --accent-dim: #3d4a72;
+    --text: #e6e8ec;
+    --text-dim: #8b92a3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: 0.2px; }
+  header span { color: var(--text-dim); font-size: 12px; }
+  .layout { flex: 1; display: flex; min-height: 0; }
+  .controls {
+    width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .sidebar-header {
+    flex-shrink: 0;
+    padding: 16px 16px 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .header-display-row { display: flex; flex-direction: column; gap: 4px; }
+  .sidebar-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .sidebar-footer {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    border-top: 1px solid var(--panel-border);
+    background: var(--bg);
+  }
+  .sidebar-resize-handle {
+    width: 6px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    background: var(--panel-border);
+    position: relative;
+  }
+  .sidebar-resize-handle:hover, .sidebar-resize-handle.dragging { background: var(--accent); }
+  .sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: -4px; right: -4px; /* widen the hit area without widening the visible bar */
+  }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .group label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); }
+  .file-btn, button {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+  }
+  button:hover, .file-btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent-dim); border-color: var(--accent); }
+  button.primary:hover { background: var(--accent); color: #10121a; }
+  .mode-row { display: flex; gap: 6px; }
+  .mode-row button { flex: 1; text-align: center; }
+  .mode-row button.active { background: var(--accent); color: #10121a; border-color: var(--accent); font-weight: 600; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--panel-border); }
+  .tabs button {
+    flex: 1 1 auto; min-width: 56px; text-align: center; background: none; border: none; border-radius: 0;
+    border-bottom: 2px solid transparent; color: var(--text-dim); padding: 10px 6px; font-size: 13px;
+  }
+  .tabs button:hover { color: var(--text); border-color: var(--panel-border); }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .shape-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .shape-swatch {
+    width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center;
+    flex: none; border: 1px solid var(--panel-border); border-radius: 6px;
+  }
+  .shape-swatch.active { border-color: var(--accent); background: var(--accent-dim); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="number"] {
+    width: 100%; background: var(--panel); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 8px 10px; border-radius: 6px; font-size: 13px;
+  }
+  textarea {
+    width: 100%; background: var(--panel); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 8px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical;
+  }
+  .value-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  input[type="file"] { display: none; }
+  .status { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .status strong { color: var(--text); }
+  .canvas-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      linear-gradient(45deg, #1a1c22 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1c22 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1c22 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1c22 75%);
+    background-size: 24px 24px;
+    background-position: 0 0, 0 12px, 12px -12px, -12px 0px;
+    background-color: #101216;
+    position: relative;
+    overflow: hidden;
+  }
+  .canvas-area.drag-over { outline: 3px dashed var(--accent); outline-offset: -3px; }
+  #workCanvas { max-width: 100%; max-height: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5); cursor: crosshair; }
+  .empty-state { color: var(--text-dim); font-size: 14px; text-align: center; max-width: 280px; padding: 24px; }
+  .divider { height: 1px; background: var(--panel-border); }
+  .brush-preview {
+    width: 100%; height: 60px;
+    border: 1px solid var(--panel-border); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel);
+  }
+  .brush-dot { border-radius: 50%; background: radial-gradient(circle, rgba(124,156,255,0.9) 0%, rgba(124,156,255,0.9) 40%, rgba(124,156,255,0) 100%); }
+
+  #slideList { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+  .slide-item {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+    padding: 6px; cursor: grab;
+  }
+  .slide-item.active { border-color: var(--accent); background: var(--accent-dim); }
+  .slide-item.drag-hint { border-color: var(--accent); border-style: dashed; }
+  .slide-thumb { width: 46px; height: 34px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #000; }
+  .slide-name { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slide-remove {
+    background: none; border: none; color: var(--text-dim); padding: 2px 6px; font-size: 14px; text-align: center;
+  }
+  .slide-remove:hover { color: #ff6b6b; }
+  .nav-row { display: flex; gap: 6px; }
+  .nav-row button { flex: 1; text-align: center; }
+
+  .list-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+    padding: 8px;
+  }
+  .list-row.current-turn, .list-row.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .list-row.revealed { border-color: #ffd23f; }
+  .list-row .row-main { flex: 1; min-width: 0; }
+  .list-row .row-title { font-size: 13px; font-weight: 600; }
+  .list-row .row-sub { font-size: 11px; color: var(--text-dim); }
+  .list-row button { flex: none; padding: 6px 8px; font-size: 12px; }
+  .combatant-row {
+    display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px;
+  }
+  .combatant-row.current-turn { border-color: var(--accent); background: var(--accent-dim); }
+  .combatant-top { display: flex; align-items: center; gap: 8px; }
+  .combatant-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .combatant-stats input[type="number"] { width: 46px; padding: 4px 6px; font-size: 12px; }
+  .combatant-stats input[type="text"] { width: 68px; padding: 4px 6px; font-size: 12px; }
+  .hp-readout { font-weight: 700; color: var(--text); min-width: 22px; text-align: center; }
+  .hp-log-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .hp-log-pill {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--bg); border: 1px solid var(--panel-border); border-radius: 10px;
+    padding: 2px 4px 2px 8px; font-size: 11px; color: var(--text-dim);
+  }
+  .hp-log-pill button {
+    background: none; border: none; color: var(--text-dim); padding: 0 4px; font-size: 12px;
+    line-height: 1; cursor: pointer;
+  }
+  .hp-log-pill button:hover { color: #ff6b6b; }
+  .resume-banner {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    max-width: 90%;
+    font-size: 13px;
+  }
+  .resume-banner button { flex: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tavern Mapper</h1>
+  <span id="dimsLabel"></span>
+</header>
+
+<div class="layout">
+  <div class="controls">
+
+    <div class="sidebar-header">
+      <div class="header-display-row">
+        <button class="primary" id="openDisplayBtn">Open display window</button>
+        <div class="status" id="displayStatus">Not connected.</div>
+      </div>
+      <div class="tabs">
+        <button id="mapsModeBtn" class="active">Maps</button>
+        <button id="catMapBtn">Map</button>
+        <button id="catDisplayBtn">Display</button>
+        <button id="catToolsBtn">Tools</button>
+      </div>
+      <div class="tabs" id="subTabsMap" style="display:none;">
+        <button id="brushModeBtn">Fog</button>
+        <button id="markerModeBtn">Markers</button>
+        <button id="gridModeBtn">Grid</button>
+        <button id="dungeonModeBtn">Dungeon</button>
+      </div>
+      <div class="tabs" id="subTabsDisplay" style="display:none;">
+        <button id="cameraModeBtn">Camera</button>
+        <button id="calibrateModeBtn">Calibrate</button>
+      </div>
+      <div class="tabs" id="subTabsTools" style="display:none;">
+        <button id="aoeModeBtn">AoE</button>
+        <button id="diceModeBtn">Dice</button>
+        <button id="initModeBtn">Init</button>
+      </div>
+    </div>
+
+    <div class="sidebar-scroll">
+
+    <div class="group" id="mapsControls">
+      <label>Slideshow</label>
+      <label class="file-btn" for="fileInput">Add image(s)…</label>
+      <input type="file" id="fileInput" accept="image/*" multiple>
+      <div id="slideList"></div>
+      <div class="nav-row">
+        <button id="prevSlideBtn">◀ Prev</button>
+        <button id="nextSlideBtn">Next ▶</button>
+      </div>
+      <div class="status">Drag images onto the map area to add them. Drag list items to reorder. Fog and grid persist per map when you switch. Use "Save session…" at the bottom of the sidebar so a crash never costs you your whole slideshow.</div>
+      <div class="status"><strong>How this works</strong><br>1. Add one or more map images — each keeps its own fog.<br>2. Click "Open display window" above, drag it onto the TV, press F11 for fullscreen.<br>3. Switch maps anytime; fog stays as you left it on each one. New maps start fully revealed.</div>
+    </div>
+
+    <div class="group" id="fogControls" style="display:none;">
+      <label>Brush Direction</label>
+      <div class="mode-row">
+        <button id="revealModeBtn" class="active">Reveal</button>
+        <button id="coverModeBtn">Re-cover</button>
+      </div>
+      <label style="margin-top:6px;">Brush Size</label>
+      <input type="range" id="brushSize" min="10" max="500" value="120">
+      <div class="value-row"><span>Small</span><span id="brushSizeLabel">120px</span><span>Large</span></div>
+      <div class="brush-preview"><div class="brush-dot" id="brushDot"></div></div>
+      <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:4px;">
+        <input type="checkbox" id="softEdge" checked>
+        Soft edge (feathered)
+      </label>
+      <label style="margin-top:6px;">Control View Fog Opacity</label>
+      <input type="range" id="fogOpacity" min="0" max="100" value="55">
+      <div class="value-row"><span>See-through</span><span id="fogOpacityLabel">55%</span><span>Solid</span></div>
+      <div class="status">This only changes how fog looks on <strong>your</strong> screen so you can see the map underneath. The display screen always shows fog fully solid.</div>
+      <button id="resetFogBtn" style="margin-top:6px;">Cover entire map</button>
+      <button id="clearFogBtn">Reveal entire map</button>
+    </div>
+
+    <div class="group" id="markerControls" style="display:none;">
+      <label>Marker Color</label>
+      <div class="mode-row" id="colorSwatches"></div>
+      <div class="mode-row" id="colorSwatchesRecent" style="margin-top:6px;"></div>
+      <div class="value-row" style="align-items:center; margin-top:6px;">
+        <span>Custom color</span>
+        <input type="color" id="markerColorWheel" value="#ff5b5b" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+      </div>
+      <label style="margin-top:6px;">Marker Shape</label>
+      <div class="shape-swatches" id="shapeSwatches"></div>
+      <button id="deleteSelectedMarkerBtn" style="margin-top:6px;">Delete selected marker</button>
+      <div class="status">Click empty space to drop a marker. Click an existing marker to select it — drag to move, Escape to deselect, Delete/Backspace or the button above to remove, right-click to remove instantly. Double-click to rename (clear the text to delete). Markers never appear on the display screen.</div>
+    </div>
+
+    <div class="group" id="cameraControls" style="display:none;">
+      <label>Display Camera</label>
+      <div class="status">Drag the box to pan, drag a corner to zoom, or scroll/pinch over the map to zoom at your cursor.</div>
+      <button id="zoomInBtn">Zoom in</button>
+      <button id="zoomOutBtn">Zoom out</button>
+      <button id="fitFullBtn">Fit whole map</button>
+    </div>
+
+    <div class="group" id="gridControls" style="display:none;">
+      <label>Grid Overlay (this map)</label>
+      <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text);">
+        <input type="checkbox" id="gridEnabled">
+        Show grid (control + display)
+      </label>
+      <div class="value-row" style="align-items:center;">
+        <span>Line color</span>
+        <input type="color" id="gridColor" value="#ffffff" style="width:40px; height:26px; padding:0; border:1px solid var(--panel-border); border-radius:4px; background:none;">
+      </div>
+      <label style="margin-top:2px;">Square Size</label>
+      <input type="range" id="gridSize" min="20" max="300" value="100">
+      <div class="value-row"><span>Fine</span><span id="gridSizeLabel">100px</span><span>Coarse</span></div>
+      <label style="margin-top:6px;">Offset X</label>
+      <input type="range" id="gridOffsetX" min="-150" max="150" value="0">
+      <div class="value-row"><span>◀</span><span id="gridOffsetXLabel">0px</span><span>▶</span></div>
+      <label style="margin-top:2px;">Offset Y</label>
+      <input type="range" id="gridOffsetY" min="-150" max="150" value="0">
+      <div class="value-row"><span>▲</span><span id="gridOffsetYLabel">0px</span><span>▼</span></div>
+      <label style="margin-top:6px;">Opacity (control + display)</label>
+      <input type="range" id="gridOpacity" min="0" max="100" value="100">
+      <div class="value-row"><span>Faint</span><span id="gridOpacityLabel">100%</span><span>Solid</span></div>
+      <div class="status">Grid settings are per-map, like fog — except line color, which is shared across all maps.</div>
+    </div>
+
+    <div class="group" id="dungeonControls" style="display:none;">
+      <label>Paint Segments (GM-only — never shown on the display)</label>
+      <label style="margin-top:2px;">Brush Size</label>
+      <input type="range" id="dungeonBrushSize" min="10" max="300" value="60">
+      <div class="value-row"><span>Small</span><span id="dungeonBrushSizeLabel">60px</span><span>Large</span></div>
+      <label style="margin-top:6px;">New Segment Color</label>
+      <div class="mode-row" id="dungeonColorSwatches"></div>
+      <div class="mode-row" id="dungeonColorSwatchesRecent" style="margin-top:6px;"></div>
+      <div class="value-row" style="align-items:center; margin-top:6px;">
+        <span>Custom color</span>
+        <input type="color" id="dungeonColorWheel" value="#ff5b5b" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+      </div>
+      <button id="dungeonNewSegmentBtn" style="margin-top:6px;">Start new segment</button>
+
+      <div class="divider"></div>
+
+      <div id="dungeonNotesPanel" style="display:none;">
+        <label>Segment Name</label>
+        <input type="text" id="dungeonSegmentName" placeholder="Segment name">
+        <label style="margin-top:6px;">Notes</label>
+        <textarea id="dungeonSegmentNotes" rows="6" placeholder="Room description, monsters, traps, loot…"></textarea>
+        <button id="dungeonDeleteSegmentBtn" style="margin-top:6px;">Delete this segment</button>
+        <div class="divider"></div>
+      </div>
+
+      <label>All Segments</label>
+      <div id="dungeonSegmentList" style="display:flex; flex-direction:column; gap:6px;"></div>
+      <div class="status">Click empty space to paint into the active segment, or start a fresh one if nothing's active. Click an existing segment to select it — you can keep painting into it, or edit its name/notes. "Start new segment" clears the active one so your next stroke begins something new. Escape deselects. Deleting a segment removes its notes permanently and asks for confirmation.</div>
+    </div>
+
+    <div class="group" id="aoeControls" style="display:none;">
+      <label>Shape</label>
+      <div class="mode-row">
+        <button id="aoeCircleBtn" class="active">Circle</button>
+        <button id="aoeSquareBtn">Square</button>
+        <button id="aoeConeBtn">Cone</button>
+      </div>
+      <label style="margin-top:6px;" id="aoeFtLabel">Radius (ft)</label>
+      <input type="number" id="aoeFt" min="5" max="500" step="5" value="20">
+      <label style="margin-top:6px;">Rotation (square/cone)</label>
+      <input type="range" id="aoeRotation" min="0" max="359" value="0">
+      <div class="value-row"><span>◀</span><span id="aoeRotationLabel">0°</span><span>▶</span></div>
+      <label style="margin-top:6px;">Color</label>
+      <div class="mode-row" id="aoeColorSwatches"></div>
+      <div class="mode-row" id="aoeColorSwatchesRecent" style="margin-top:6px;"></div>
+      <div class="value-row" style="align-items:center; margin-top:6px;">
+        <span>Custom color</span>
+        <input type="color" id="aoeColorWheel" value="#ff5b5b" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+      </div>
+      <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:6px;">
+        <input type="checkbox" id="aoeVisibleToggle" checked>
+        Show on display screen
+      </label>
+      <button id="deleteSelectedAoeBtn" style="margin-top:6px;">Delete selected AoE shape</button>
+      <div class="status">Click empty space to place a shape at the entered size. Click an existing one to select it — drag to move, Escape to deselect, double-click to show/hide it on the display, Delete/Backspace or the button above to remove, right-click to remove instantly. Hidden shapes still show on your screen (dashed) so you can prep them in advance. Feet-to-pixel scale for this map lives on the Calibrate tab.</div>
+    </div>
+
+    <div class="group" id="calibrateControls" style="display:none;">
+      <label>Calibration (this map)</label>
+      <div class="status">Sets how many feet an AoE shape's "ft" value represents on this map — everything else in the app (fog, markers, grid) is independent of this.</div>
+      <div id="aoeCalibrationGridNote" class="status" style="display:none;">Using this map's grid: 1 square = 5ft.</div>
+      <div id="aoeCalibrationManualRow">
+        <label style="margin-top:2px;">Pixels per 5ft square</label>
+        <input type="number" id="aoeCalibration" min="10" max="2000" step="5" value="100">
+        <div class="status">On a grid, 5ft always equals one grid square automatically. Without a grid, calibrate here so AoE sizes are accurate for this specific map.</div>
+
+        <div class="divider"></div>
+        <label>Calibrate Against Your Display</label>
+        <div class="status">Hold a ruler up to the TV, not the laptop — these work at whatever zoom you're currently using, and never reset it.</div>
+        <label style="margin-top:6px;">Reference Length</label>
+        <div class="mode-row" id="calibRefLenButtons">
+          <button data-ft="5" class="active">5ft</button>
+          <button data-ft="10">10ft</button>
+          <button data-ft="30">30ft</button>
+        </div>
+        <input type="number" id="calibCustomFt" placeholder="Custom ft…" style="margin-top:6px;">
+        <button id="calibDrawLineBtn" style="margin-top:6px;">Draw a line to calibrate…</button>
+        <button id="calibShowSquareBtn">Show reference square</button>
+
+        <div class="divider"></div>
+        <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text);">
+          <input type="checkbox" id="aoeZoomLockToggle">
+          Lock to zoom
+        </label>
+        <div class="status">When locked, calibration auto-adjusts every time you zoom, so a real-world foot stays the same physical size on the TV no matter how far in or out you go.</div>
+        <button id="calibSnapZoomBtn" style="display:none; margin-top:6px;">Snap to calibrated zoom</button>
+      </div>
+    </div>
+
+    <div class="group" id="diceControls" style="display:none;">
+      <label>Click a die to roll it into the pool</label>
+      <div class="mode-row" id="diceTypeButtons" style="flex-wrap: wrap;"></div>
+      <div id="dicePoolRow" class="hp-log-row" style="min-height:0;"></div>
+      <div class="value-row" style="align-items:center; margin-top:2px;">
+        <span>Pool total</span>
+        <span id="dicePoolTotal" style="font-weight:700; font-size:18px;">—</span>
+      </div>
+      <div class="mode-row" style="margin-top:4px;">
+        <button id="clearPoolBtn">Clear pool</button>
+        <button id="revealPoolBtn">Show pool on display</button>
+      </div>
+      <div class="divider"></div>
+      <label>Formula Roll</label>
+      <label style="margin-top:2px;">Number of Dice</label>
+      <input type="number" id="diceCount" min="1" max="20" value="1">
+      <label style="margin-top:6px;">Modifier</label>
+      <input type="number" id="diceModifier" value="0">
+      <div class="mode-row" style="margin-top:6px;">
+        <button id="diceAdvBtn">Advantage</button>
+        <button id="diceNormalBtn" class="active">Normal</button>
+        <button id="diceDisBtn">Disadvantage</button>
+      </div>
+      <button class="primary" id="rollDiceBtn" style="margin-top:6px;">Roll</button>
+      <div id="diceResult" class="status" style="font-size:16px; color:var(--text); min-height:20px;"></div>
+      <div class="divider"></div>
+      <label>History</label>
+      <div id="diceHistoryList" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+      <div class="status">The pool is for quick one-off rolls (click a die, it rolls once and adds to the running total — click × on a die to remove a misclick). The formula roll below is for a specific NdX+mod, and goes to history. Either can be revealed to the display; showing one replaces whatever was shown before.</div>
+    </div>
+
+    <div class="group" id="initiativeControls" style="display:none;">
+      <div class="value-row" style="align-items:center;">
+        <label style="margin:0;">Round <span id="roundLabel">1</span></label>
+        <button class="primary" id="nextTurnBtn">Next Turn ▶</button>
+      </div>
+      <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:4px;">
+        <input type="checkbox" id="initiativeShowOnDisplay">
+        Show on display screen
+      </label>
+
+      <div id="combatantList" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
+
+      <div class="divider"></div>
+
+      <label>Add Combatant</label>
+      <input type="text" id="combatantName" placeholder="Name">
+      <input type="number" id="combatantScore" placeholder="Initiative" style="margin-top:6px;">
+      <button id="addCombatantBtn" style="margin-top:6px;">Add to initiative</button>
+      <button id="resetInitiativeBtn" style="margin-top:6px;">Clear all / new encounter</button>
+
+      <div class="status">Turn order is shared across all maps, not tied to any one of them. Sorted highest first; the current turn is marked ▶. AC/HP are optional (leave blank for players) and GM-only — never shown on the display. Type +N/-N into the HP box for damage/healing or a plain number to set it; each entry is logged and can be removed individually (tap the count next to HP to expand the log).</div>
+    </div>
+
+    </div><!-- /sidebar-scroll -->
+
+    <div class="sidebar-footer">
+      <div class="nav-row" style="margin-bottom: 8px;">
+        <button id="saveSessionBtn">Save session…</button>
+        <label class="file-btn" for="loadSessionInput" style="flex:1; text-align:center;">Load session…</label>
+      </div>
+      <input type="file" id="loadSessionInput" accept="application/json,.json">
+      <div class="value-row" style="align-items:center;">
+        <label id="undoContextLabel" style="margin:0; text-transform:uppercase; font-size:11px; letter-spacing:0.6px; color:var(--text-dim);" title="Undo remembers separately per tab — switching tabs never loses another tab's undo history.">Undo (Fog)</label>
+        <button id="undoBtn">Undo (Ctrl+Z)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+
+  <div class="canvas-area" id="canvasArea">
+    <div class="resume-banner" id="resumeBanner" style="display:none;">
+      <span id="resumeText"></span>
+      <button class="primary" id="resumeBtn">Resume</button>
+      <button id="discardBtn">Discard</button>
+    </div>
+    <canvas id="workCanvas" style="display:none;"></canvas>
+    <div class="empty-state" id="emptyState">Add a map image to begin — click "Add image(s)…" or drag one in here.</div>
+  </div>
+</div>
+<script>
+(() => {
+  // src/core/geometry.mjs
+  function clamp(value, minimum, maximum) {
+    return Math.max(minimum, Math.min(maximum, value));
+  }
+  function gridMultiplesInRange(size, minimum, maximum, offset) {
+    if (!(size > 0) || !Number.isFinite(size)) return [];
+    const normalizedOffset = (offset % size + size) % size;
+    const values = [];
+    const start = Math.ceil((minimum - normalizedOffset) / size) * size + normalizedOffset;
+    for (let value = start; value <= maximum; value += size) values.push(value);
+    return values;
+  }
+  function pointInConvexPoly(pointX, pointY, points) {
+    let sign = 0;
+    for (let index = 0; index < points.length; index++) {
+      const [x1, y1] = points[index];
+      const [x2, y2] = points[(index + 1) % points.length];
+      const cross = (x2 - x1) * (pointY - y1) - (y2 - y1) * (pointX - x1);
+      if (cross === 0) continue;
+      const nextSign = cross > 0 ? 1 : -1;
+      if (sign === 0) sign = nextSign;
+      else if (sign !== nextSign) return false;
+    }
+    return true;
+  }
+  function distanceToLineSegment(pointX, pointY, x1, y1, x2, y2) {
+    const deltaX = x2 - x1;
+    const deltaY = y2 - y1;
+    const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+    const rawPosition = lengthSquared === 0 ? 0 : ((pointX - x1) * deltaX + (pointY - y1) * deltaY) / lengthSquared;
+    const position = clamp(rawPosition, 0, 1);
+    return Math.hypot(
+      pointX - (x1 + position * deltaX),
+      pointY - (y1 + position * deltaY)
+    );
+  }
+
+  // src/core/autosave.mjs
+  function createAutosaveStore({
+    indexedDBRef = indexedDB,
+    databaseName = "TavernMapperAutosaveDB",
+    storeName = "autosave",
+    now = Date.now
+  } = {}) {
+    function open() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDBRef.open(databaseName, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore(storeName);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async function write(data) {
+      const database = await open();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, "readwrite");
+        transaction.objectStore(storeName).put({ data, savedAt: now() }, "current");
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+    async function read() {
+      const database = await open();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, "readonly");
+        const request = transaction.objectStore(storeName).get("current");
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async function remove() {
+      const database = await open();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, "readwrite");
+        transaction.objectStore(storeName).delete("current");
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+    return { read, remove, write };
+  }
+  function createAutosaveScheduler({
+    store,
+    serialize,
+    hasData,
+    delay = 1500,
+    setTimer = setTimeout,
+    clearTimer = clearTimeout
+  }) {
+    let timer = null;
+    return function schedule() {
+      clearTimer(timer);
+      timer = setTimer(() => {
+        if (!hasData()) {
+          store.remove().catch(() => {
+          });
+          return;
+        }
+        try {
+          store.write(serialize()).catch(() => {
+          });
+        } catch (error) {
+        }
+      }, delay);
+    };
+  }
+
+  // src/core/undo.mjs
+  function cloneValue(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+  function pushBounded(history, snapshot, limit) {
+    history.push(snapshot);
+    if (history.length > limit) history.shift();
+  }
+  function snapshotCamera(camera) {
+    return { x: camera.x, y: camera.y, w: camera.w, h: camera.h };
+  }
+  function snapshotGrid(grid) {
+    return {
+      enabled: grid.enabled,
+      size: grid.size,
+      offsetX: grid.offsetX,
+      offsetY: grid.offsetY,
+      opacity: grid.opacity
+    };
+  }
+  function snapshotAoe(slide) {
+    return {
+      shapes: cloneValue(slide.aoeShapes),
+      calibration: slide.aoeCalibration,
+      zoomLock: slide.aoeZoomLock,
+      zoomLockRefCalibration: slide.aoeZoomLockRefCalibration,
+      zoomLockRefCamW: slide.aoeZoomLockRefCamW,
+      zoomLockRefCamera: slide.aoeZoomLockRefCamera ? { ...slide.aoeZoomLockRefCamera } : null
+    };
+  }
+
+  // src/features/aoe.mjs
+  function computeAoeGeometry(shape, pixelsPerFoot) {
+    const size = shape.ft * pixelsPerFoot;
+    if (shape.type === "circle") {
+      return { kind: "circle", cx: shape.x, cy: shape.y, r: size };
+    }
+    if (shape.type === "square") {
+      const half = size / 2;
+      const cosine = Math.cos(shape.rotation);
+      const sine = Math.sin(shape.rotation);
+      const points = [[-half, -half], [half, -half], [half, half], [-half, half]].map(([localX, localY]) => [
+        shape.x + localX * cosine - localY * sine,
+        shape.y + localX * sine + localY * cosine
+      ]);
+      return { kind: "poly", points };
+    }
+    const directionX = Math.cos(shape.rotation);
+    const directionY = Math.sin(shape.rotation);
+    const perpendicularX = -directionY;
+    const perpendicularY = directionX;
+    const halfWidth = size / 2;
+    const baseX = shape.x + directionX * size;
+    const baseY = shape.y + directionY * size;
+    return {
+      kind: "poly",
+      points: [
+        [shape.x, shape.y],
+        [baseX + perpendicularX * halfWidth, baseY + perpendicularY * halfWidth],
+        [baseX - perpendicularX * halfWidth, baseY - perpendicularY * halfWidth]
+      ]
+    };
+  }
+  function rotationHandlePoint(shape, pixelsPerFoot) {
+    const size = shape.ft * pixelsPerFoot;
+    const distance = shape.type === "cone" ? size : size / 2 + 20;
+    return {
+      x: shape.x + Math.cos(shape.rotation) * distance,
+      y: shape.y + Math.sin(shape.rotation) * distance
+    };
+  }
+
+  // src/features/camera.mjs
+  function hitTestCamera(camera, x, y, scale = 1, handleSize = 14) {
+    const hitRadius = (handleSize / 2 + 6) * scale;
+    const corners = {
+      nw: [camera.x, camera.y],
+      ne: [camera.x + camera.w, camera.y],
+      sw: [camera.x, camera.y + camera.h],
+      se: [camera.x + camera.w, camera.y + camera.h]
+    };
+    for (const [kind, [cornerX, cornerY]] of Object.entries(corners)) {
+      if (Math.hypot(cornerX - x, cornerY - y) < hitRadius) return kind;
+    }
+    return x >= camera.x && x <= camera.x + camera.w && y >= camera.y && y <= camera.y + camera.h ? "move" : null;
+  }
+  function cameraCursorFor(kind) {
+    return {
+      move: "move",
+      nw: "nwse-resize",
+      se: "nwse-resize",
+      ne: "nesw-resize",
+      sw: "nesw-resize"
+    }[kind] || "crosshair";
+  }
+  function applyCameraDrag(camera, mapWidth, mapHeight, kind, deltaX, deltaY) {
+    const aspect = mapWidth / mapHeight;
+    const minimumWidth = mapWidth * 0.05;
+    if (kind === "move") {
+      camera.x = clamp(camera.x + deltaX, 0, mapWidth - camera.w);
+      camera.y = clamp(camera.y + deltaY, 0, mapHeight - camera.h);
+      return camera;
+    }
+    let anchorX;
+    let anchorY;
+    let width;
+    if (kind === "nw") {
+      anchorX = camera.x + camera.w;
+      anchorY = camera.y + camera.h;
+      width = camera.w - deltaX;
+    }
+    if (kind === "ne") {
+      anchorX = camera.x;
+      anchorY = camera.y + camera.h;
+      width = camera.w + deltaX;
+    }
+    if (kind === "sw") {
+      anchorX = camera.x + camera.w;
+      anchorY = camera.y;
+      width = camera.w - deltaX;
+    }
+    if (kind === "se") {
+      anchorX = camera.x;
+      anchorY = camera.y;
+      width = camera.w + deltaX;
+    }
+    if (width === void 0) return camera;
+    width = clamp(width, minimumWidth, mapWidth);
+    const height = width / aspect;
+    if (kind === "nw") {
+      camera.x = anchorX - width;
+      camera.y = anchorY - height;
+    }
+    if (kind === "ne") {
+      camera.x = anchorX;
+      camera.y = anchorY - height;
+    }
+    if (kind === "sw") {
+      camera.x = anchorX - width;
+      camera.y = anchorY;
+    }
+    if (kind === "se") {
+      camera.x = anchorX;
+      camera.y = anchorY;
+    }
+    camera.w = width;
+    camera.h = height;
+    camera.x = clamp(camera.x, 0, mapWidth - camera.w);
+    camera.y = clamp(camera.y, 0, mapHeight - camera.h);
+    return camera;
+  }
+  function zoomCameraAt(camera, mapWidth, mapHeight, cursorX, cursorY, factor) {
+    const aspect = mapWidth / mapHeight;
+    const minimumWidth = mapWidth * 0.05;
+    const width = clamp(camera.w * factor, minimumWidth, mapWidth);
+    const height = width / aspect;
+    camera.x = cursorX - (cursorX - camera.x) * (width / camera.w);
+    camera.y = cursorY - (cursorY - camera.y) * (height / camera.h);
+    camera.w = width;
+    camera.h = height;
+    camera.x = clamp(camera.x, 0, mapWidth - camera.w);
+    camera.y = clamp(camera.y, 0, mapHeight - camera.h);
+    return camera;
+  }
+
+  // src/features/dice.mjs
+  function rollDice(sides, count, modifier, random = Math.random) {
+    const rolls = [];
+    for (let index = 0; index < count; index++) {
+      rolls.push(1 + Math.floor(random() * sides));
+    }
+    return {
+      rolls,
+      total: rolls.reduce((sum, value) => sum + value, 0) + modifier
+    };
+  }
+
+  // src/features/dungeon.mjs
+  function hitTestDungeon(segments, x, y) {
+    for (let segmentIndex = segments.length - 1; segmentIndex >= 0; segmentIndex--) {
+      const segment = segments[segmentIndex];
+      for (const stroke of segment.strokes) {
+        const radius = stroke.brushSize / 2;
+        for (let pointIndex = 0; pointIndex < stroke.points.length; pointIndex++) {
+          const point = stroke.points[pointIndex];
+          if (Math.hypot(point.x - x, point.y - y) <= radius) return segment;
+          if (pointIndex > 0) {
+            const previous = stroke.points[pointIndex - 1];
+            if (distanceToLineSegment(x, y, previous.x, previous.y, point.x, point.y) <= radius) return segment;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // src/features/initiative.mjs
+  function sortCombatants(combatants) {
+    return [...combatants].sort((first, second) => second.score - first.score);
+  }
+  function computeHitPoints(combatant) {
+    let current = null;
+    for (const entry of combatant.hpLog || []) {
+      current = entry.type === "set" ? entry.value : (current === null ? 0 : current) + entry.value;
+    }
+    return current;
+  }
+
+  // src/display/window-manager.mjs
+  function createDisplayHtml() {
+    return `<!DOCTYPE html>
+<html><head><title>Tavern Mapper Display</title>
+<style>
+  html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; cursor:none; }
+  canvas { display:block; }
+  #rollBanner {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,11,14,0.88); color: #fff; padding: 16px 30px; border-radius: 12px;
+    font-size: 28px; font-weight: 600; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: none; z-index: 10; white-space: nowrap;
+  }
+  #initiativePanel {
+    position: fixed; top: 20px; right: 20px; background: rgba(10,11,14,0.88); color: #fff;
+    padding: 14px 18px; border-radius: 10px; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; display: none; z-index: 10; min-width: 170px;
+  }
+  #initiativePanel .init-round { font-size: 12px; color: #8b92a3; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #initiativePanel .init-row { padding: 4px 0; display: flex; justify-content: space-between; gap: 12px; }
+  #initiativePanel .init-current { color: #7c9cff; font-weight: 700; }
+</style></head>
+<body>
+<canvas id="displayCanvas"></canvas>
+<div id="rollBanner"></div>
+<div id="initiativePanel"></div>
+<script>
+  const c = document.getElementById('displayCanvas');
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    c.width = window.innerWidth * dpr;
+    c.height = window.innerHeight * dpr;
+    c.style.width = window.innerWidth + 'px';
+    c.style.height = window.innerHeight + 'px';
+    c.getContext('2d').fillStyle = '#000';
+    c.getContext('2d').fillRect(0,0,c.width,c.height);
+    if (window.opener && window.opener.__fogRedraw) window.opener.__fogRedraw();
+    if (window.opener && window.opener.__updateDisplayExtras) window.opener.__updateDisplayExtras();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+<\/script>
+</body></html>`;
+  }
+  function createDisplayWindowManager({
+    hostWindow = window,
+    statusElement,
+    redraw,
+    updateExtras,
+    setTimer = setTimeout,
+    setRepeatingTimer = setInterval
+  } = {}) {
+    const displayHtml = createDisplayHtml();
+    let displayWindow = null;
+    function writeDocument() {
+      displayWindow.document.open();
+      displayWindow.document.write(displayHtml);
+      displayWindow.document.close();
+    }
+    function scheduleRefresh() {
+      setTimer(redraw, 150);
+      setTimer(updateExtras, 150);
+    }
+    function openOrFocus() {
+      if (displayWindow && !displayWindow.closed) {
+        try {
+          if (displayWindow.document.getElementById("displayCanvas")) {
+            displayWindow.focus();
+            return displayWindow;
+          }
+        } catch (error) {
+        }
+        try {
+          displayWindow.close();
+        } catch (error) {
+        }
+      }
+      displayWindow = hostWindow.open(
+        "",
+        "TavernMapperDisplay",
+        "width=1024,height=768,menubar=no,toolbar=no,location=no,status=no,scrollbars=no"
+      );
+      if (!displayWindow) {
+        statusElement.textContent = "Blocked by popup blocker \u2014 allow popups for this page and try again.";
+        return null;
+      }
+      writeDocument();
+      statusElement.innerHTML = "<strong>Connected.</strong> Drag that window to your TV screen, then press F11 on it for fullscreen.";
+      displayWindow.addEventListener("load", redraw);
+      scheduleRefresh();
+      return displayWindow;
+    }
+    function checkHealth() {
+      if (!displayWindow) return;
+      if (displayWindow.closed) {
+        statusElement.textContent = "Display window closed.";
+        displayWindow = null;
+        return;
+      }
+      try {
+        if (!displayWindow.document.getElementById("displayCanvas")) {
+          writeDocument();
+          statusElement.innerHTML = "<strong>Reconnected.</strong> The display window's content was restored automatically.";
+          scheduleRefresh();
+        }
+      } catch (error) {
+        statusElement.textContent = 'Lost connection to the display window \u2014 click "Open display window" to reconnect.';
+      }
+    }
+    setRepeatingTimer(checkHealth, 1500);
+    return { getWindow: () => displayWindow, openOrFocus, checkHealth };
+  }
+
+  // src/renderers/canvas2d.mjs
+  function drawAoeGeometry(context, geometry, color, transform, scale, dashed) {
+    context.save();
+    context.fillStyle = color;
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    if (dashed) context.setLineDash([6, 5]);
+    context.beginPath();
+    if (geometry.kind === "circle") {
+      const [centerX, centerY] = transform(geometry.cx, geometry.cy);
+      context.arc(centerX, centerY, geometry.r * scale, 0, Math.PI * 2);
+    } else {
+      geometry.points.forEach(([pointX, pointY], index) => {
+        const [screenX, screenY] = transform(pointX, pointY);
+        if (index === 0) context.moveTo(screenX, screenY);
+        else context.lineTo(screenX, screenY);
+      });
+      context.closePath();
+    }
+    context.globalAlpha = dashed ? 0.15 : 0.3;
+    context.fill();
+    context.globalAlpha = dashed ? 0.55 : 0.85;
+    context.stroke();
+    context.restore();
+  }
+  function drawControlAoe(context, slide, selectedShapeId, pixelsPerFoot) {
+    const identity = (x, y) => [x, y];
+    slide.aoeShapes.forEach((shape) => {
+      const geometry = computeAoeGeometry(shape, pixelsPerFoot);
+      drawAoeGeometry(context, geometry, shape.color, identity, 1, shape.visible === false);
+      if (shape.id !== selectedShapeId) return;
+      context.save();
+      context.strokeStyle = "#7c9cff";
+      context.lineWidth = 2;
+      context.setLineDash([4, 3]);
+      context.beginPath();
+      context.arc(shape.x, shape.y, 10, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+      if (shape.type !== "square" && shape.type !== "cone") return;
+      const handle = rotationHandlePoint(shape, pixelsPerFoot);
+      context.save();
+      context.strokeStyle = "#7c9cff";
+      context.lineWidth = 2;
+      context.setLineDash([3, 3]);
+      context.beginPath();
+      context.moveTo(shape.x, shape.y);
+      context.lineTo(handle.x, handle.y);
+      context.stroke();
+      context.setLineDash([]);
+      context.beginPath();
+      context.arc(handle.x, handle.y, 7, 0, Math.PI * 2);
+      context.fillStyle = "#7c9cff";
+      context.fill();
+      context.strokeStyle = "#0a0b0e";
+      context.lineWidth = 1.5;
+      context.stroke();
+      context.restore();
+    });
+  }
+  function drawDisplayAoe(context, slide, camera, x, y, scale, pixelsPerFoot) {
+    const transform = (pointX, pointY) => [x + (pointX - camera.x) * scale, y + (pointY - camera.y) * scale];
+    slide.aoeShapes.forEach((shape) => {
+      if (shape.visible === false) return;
+      const geometry = computeAoeGeometry(shape, pixelsPerFoot);
+      drawAoeGeometry(context, geometry, shape.color, transform, scale, false);
+    });
+  }
+  function drawControlGrid(context, slide, color) {
+    if (!slide.grid.enabled) return;
+    const xs = gridMultiplesInRange(slide.grid.size, 0, slide.mapCanvas.width, slide.grid.offsetX);
+    const ys = gridMultiplesInRange(slide.grid.size, 0, slide.mapCanvas.height, slide.grid.offsetY);
+    context.save();
+    context.globalAlpha = typeof slide.grid.opacity === "number" ? slide.grid.opacity : 1;
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    context.beginPath();
+    xs.forEach((x) => {
+      context.moveTo(x, 0);
+      context.lineTo(x, slide.mapCanvas.height);
+    });
+    ys.forEach((y) => {
+      context.moveTo(0, y);
+      context.lineTo(slide.mapCanvas.width, y);
+    });
+    context.stroke();
+    context.restore();
+  }
+  function drawDisplayGrid(context, slide, camera, x, y, width, height, scale, color) {
+    if (!slide.grid.enabled) return;
+    const xs = gridMultiplesInRange(slide.grid.size, camera.x, camera.x + camera.w, slide.grid.offsetX);
+    const ys = gridMultiplesInRange(slide.grid.size, camera.y, camera.y + camera.h, slide.grid.offsetY);
+    context.save();
+    context.globalAlpha = typeof slide.grid.opacity === "number" ? slide.grid.opacity : 1;
+    context.strokeStyle = color;
+    context.lineWidth = Math.max(1, 2 * scale);
+    context.beginPath();
+    xs.forEach((gridX) => {
+      const screenX = x + (gridX - camera.x) * scale;
+      context.moveTo(screenX, y);
+      context.lineTo(screenX, y + height);
+    });
+    ys.forEach((gridY) => {
+      const screenY = y + (gridY - camera.y) * scale;
+      context.moveTo(x, screenY);
+      context.lineTo(x + width, screenY);
+    });
+    context.stroke();
+    context.restore();
+  }
+  function drawMarkerShape(context, shape, centerX, centerY, radius, color) {
+    const dark = "#0a0b0e";
+    context.save();
+    context.lineJoin = "round";
+    if (shape === "circle") {
+      context.beginPath();
+      context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      context.fillStyle = color;
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = dark;
+      context.stroke();
+    } else if (shape === "square") {
+      context.beginPath();
+      context.rect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+      context.fillStyle = color;
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = dark;
+      context.stroke();
+    } else if (shape === "triangle") {
+      context.beginPath();
+      context.moveTo(centerX, centerY - radius);
+      context.lineTo(centerX + radius * 0.95, centerY + radius * 0.8);
+      context.lineTo(centerX - radius * 0.95, centerY + radius * 0.8);
+      context.closePath();
+      context.fillStyle = color;
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = dark;
+      context.stroke();
+    } else if (shape === "star") {
+      const innerRadius = radius * 0.45;
+      let rotation = -Math.PI / 2;
+      const step = Math.PI / 5;
+      context.beginPath();
+      context.moveTo(centerX + Math.cos(rotation) * radius, centerY + Math.sin(rotation) * radius);
+      for (let index = 0; index < 5; index++) {
+        rotation += step;
+        context.lineTo(centerX + Math.cos(rotation) * innerRadius, centerY + Math.sin(rotation) * innerRadius);
+        rotation += step;
+        context.lineTo(centerX + Math.cos(rotation) * radius, centerY + Math.sin(rotation) * radius);
+      }
+      context.closePath();
+      context.fillStyle = color;
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = dark;
+      context.stroke();
+    } else if (shape === "skull") {
+      context.beginPath();
+      context.arc(centerX, centerY - radius * 0.15, radius * 0.85, 0, Math.PI * 2);
+      context.fillStyle = color;
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = dark;
+      context.stroke();
+      context.beginPath();
+      context.rect(centerX - radius * 0.55, centerY + radius * 0.35, radius * 1.1, radius * 0.5);
+      context.fillStyle = color;
+      context.fill();
+      context.strokeStyle = dark;
+      context.stroke();
+      context.fillStyle = dark;
+      context.beginPath();
+      context.arc(centerX - radius * 0.35, centerY - radius * 0.2, radius * 0.22, 0, Math.PI * 2);
+      context.fill();
+      context.beginPath();
+      context.arc(centerX + radius * 0.35, centerY - radius * 0.2, radius * 0.22, 0, Math.PI * 2);
+      context.fill();
+      context.beginPath();
+      context.moveTo(centerX, centerY - radius * 0.05);
+      context.lineTo(centerX - radius * 0.12, centerY + radius * 0.22);
+      context.lineTo(centerX + radius * 0.12, centerY + radius * 0.22);
+      context.closePath();
+      context.fill();
+    } else if (shape === "chest") {
+      context.beginPath();
+      context.rect(centerX - radius * 0.9, centerY - radius * 0.1, radius * 1.8, radius);
+      context.fillStyle = color;
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = dark;
+      context.stroke();
+      context.beginPath();
+      context.moveTo(centerX - radius * 0.9, centerY - radius * 0.1);
+      context.quadraticCurveTo(centerX, centerY - radius * 0.95, centerX + radius * 0.9, centerY - radius * 0.1);
+      context.closePath();
+      context.fillStyle = color;
+      context.fill();
+      context.strokeStyle = dark;
+      context.stroke();
+      context.fillStyle = dark;
+      context.beginPath();
+      context.rect(centerX - radius * 0.15, centerY - radius * 0.15, radius * 0.3, radius * 0.35);
+      context.fill();
+    } else {
+      context.lineCap = "round";
+      context.lineWidth = 7;
+      context.strokeStyle = dark;
+      context.beginPath();
+      context.moveTo(centerX - radius, centerY - radius);
+      context.lineTo(centerX + radius, centerY + radius);
+      context.moveTo(centerX + radius, centerY - radius);
+      context.lineTo(centerX - radius, centerY + radius);
+      context.stroke();
+      context.lineWidth = 4;
+      context.strokeStyle = color;
+      context.beginPath();
+      context.moveTo(centerX - radius, centerY - radius);
+      context.lineTo(centerX + radius, centerY + radius);
+      context.moveTo(centerX + radius, centerY - radius);
+      context.lineTo(centerX - radius, centerY + radius);
+      context.stroke();
+    }
+    context.restore();
+  }
+  function drawMarkers(context, markers, selectedMarkerId) {
+    markers.forEach((marker) => {
+      const radius = 12;
+      if (marker.id === selectedMarkerId) {
+        context.save();
+        context.strokeStyle = "#7c9cff";
+        context.lineWidth = 2;
+        context.setLineDash([4, 3]);
+        context.beginPath();
+        context.arc(marker.x, marker.y, radius + 7, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+      }
+      drawMarkerShape(context, marker.shape || "x", marker.x, marker.y, radius, marker.color);
+      if (marker.label) {
+        context.save();
+        context.font = '13px -apple-system, "Segoe UI", Roboto, sans-serif';
+        const textWidth = context.measureText(marker.label).width;
+        context.fillStyle = "rgba(10,11,14,0.85)";
+        context.fillRect(marker.x + radius + 4, marker.y - 10, textWidth + 10, 20);
+        context.fillStyle = "#ffffff";
+        context.fillText(marker.label, marker.x + radius + 9, marker.y + 4);
+        context.restore();
+      }
+    });
+  }
+  function drawDungeon(context, segments, activeSegmentId) {
+    segments.forEach((segment) => {
+      const active = segment.id === activeSegmentId;
+      context.save();
+      context.globalAlpha = active ? 0.45 : 0.28;
+      context.strokeStyle = segment.color;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      segment.strokes.forEach((stroke) => {
+        if (!stroke.points.length) return;
+        context.lineWidth = stroke.brushSize;
+        context.beginPath();
+        if (stroke.points.length === 1) {
+          context.arc(stroke.points[0].x, stroke.points[0].y, stroke.brushSize / 2, 0, Math.PI * 2);
+          context.fillStyle = segment.color;
+          context.fill();
+        } else {
+          context.moveTo(stroke.points[0].x, stroke.points[0].y);
+          stroke.points.forEach((point) => context.lineTo(point.x, point.y));
+          context.stroke();
+        }
+      });
+      context.restore();
+      if (!active) return;
+      context.save();
+      context.globalAlpha = 0.9;
+      context.strokeStyle = segment.color;
+      context.lineWidth = 2;
+      segment.strokes.forEach((stroke) => {
+        if (stroke.points.length < 2) return;
+        context.beginPath();
+        context.moveTo(stroke.points[0].x, stroke.points[0].y);
+        stroke.points.forEach((point) => context.lineTo(point.x, point.y));
+        context.stroke();
+      });
+      context.restore();
+    });
+  }
+  function paintFogStroke(context, startX, startY, endX, endY, brushSize, revealing, softEdge) {
+    const radius = brushSize / 2;
+    const distance = Math.hypot(endX - startX, endY - startY);
+    const step = Math.max(2, brushSize / 6);
+    const steps = Math.max(1, Math.floor(distance / step));
+    context.globalCompositeOperation = revealing ? "destination-out" : "source-over";
+    for (let index = 0; index <= steps; index++) {
+      const position = index / steps;
+      const x = startX + (endX - startX) * position;
+      const y = startY + (endY - startY) * position;
+      if (softEdge) {
+        const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, "rgba(0,0,0,1)");
+        gradient.addColorStop(0.7, "rgba(0,0,0,0.9)");
+        gradient.addColorStop(1, "rgba(0,0,0,0)");
+        context.fillStyle = gradient;
+      } else {
+        context.fillStyle = "#000000";
+      }
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
+  // src/ui/color-picker.mjs
+  function updateRecentColors(colors, hex, limit = 8) {
+    const normalized = hex.toLowerCase();
+    return [normalized, ...colors.filter((color) => color !== normalized)].slice(0, limit);
+  }
+  function createSharedColorPicker({ documentRef = document, recentLimit = 8 } = {}) {
+    let recentColors = [];
+    const registry = [];
+    function makeSwatch(hex, onPick) {
+      const button = documentRef.createElement("button");
+      button.dataset.color = hex;
+      button.style.background = hex;
+      button.style.width = "28px";
+      button.style.height = "28px";
+      button.style.borderRadius = "6px";
+      button.style.flex = "none";
+      button.style.border = "1px solid var(--panel-border)";
+      button.addEventListener("click", () => onPick(hex));
+      return button;
+    }
+    function highlight(presetContainer, recentContainer, hex) {
+      const target = (hex || "").toLowerCase();
+      [...presetContainer.children, ...recentContainer.children].forEach((child) => {
+        var _a;
+        child.style.border = ((_a = child.dataset.color) == null ? void 0 : _a.toLowerCase()) === target ? "2px solid #fff" : "1px solid var(--panel-border)";
+      });
+    }
+    function renderRecentColors() {
+      registry.forEach((entry) => {
+        entry.recentContainer.innerHTML = "";
+        recentColors.forEach((color) => entry.recentContainer.appendChild(makeSwatch(color, entry.pick)));
+      });
+    }
+    function addRecentColor(hex) {
+      recentColors = updateRecentColors(recentColors, hex, recentLimit);
+      renderRecentColors();
+    }
+    function setup(presetContainer, recentContainer, wheelInput, presetColors, initialColor, onPick) {
+      function pick(hex) {
+        onPick(hex);
+        highlight(presetContainer, recentContainer, hex);
+        wheelInput.value = hex;
+      }
+      presetColors.forEach((color) => presetContainer.appendChild(makeSwatch(color, pick)));
+      wheelInput.value = initialColor;
+      wheelInput.addEventListener("input", () => {
+        pick(wheelInput.value);
+        addRecentColor(wheelInput.value);
+      });
+      const entry = { presetContainer, recentContainer, pick };
+      registry.push(entry);
+      highlight(presetContainer, recentContainer, initialColor);
+      return entry;
+    }
+    return { setup, highlight };
+  }
+
+  // src/ui/escape-html.mjs
+  function escapeHtml(value) {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // src/main.js
+  (function() {
+    const fileInput = document.getElementById("fileInput");
+    const workCanvas = document.getElementById("workCanvas");
+    const canvasArea = document.getElementById("canvasArea");
+    const emptyState = document.getElementById("emptyState");
+    const dimsLabel = document.getElementById("dimsLabel");
+    const openDisplayBtn = document.getElementById("openDisplayBtn");
+    const displayStatus = document.getElementById("displayStatus");
+    const slideListEl = document.getElementById("slideList");
+    const prevSlideBtn = document.getElementById("prevSlideBtn");
+    const nextSlideBtn = document.getElementById("nextSlideBtn");
+    const saveSessionBtn = document.getElementById("saveSessionBtn");
+    const loadSessionInput = document.getElementById("loadSessionInput");
+    const resumeBanner = document.getElementById("resumeBanner");
+    const resumeText = document.getElementById("resumeText");
+    const resumeBtn = document.getElementById("resumeBtn");
+    const discardBtn = document.getElementById("discardBtn");
+    const mapsModeBtn = document.getElementById("mapsModeBtn");
+    const mapsControls = document.getElementById("mapsControls");
+    const catMapBtn = document.getElementById("catMapBtn");
+    const catDisplayBtn = document.getElementById("catDisplayBtn");
+    const catToolsBtn = document.getElementById("catToolsBtn");
+    const subTabsMap = document.getElementById("subTabsMap");
+    const subTabsDisplay = document.getElementById("subTabsDisplay");
+    const subTabsTools = document.getElementById("subTabsTools");
+    const brushModeBtn = document.getElementById("brushModeBtn");
+    const markerModeBtn = document.getElementById("markerModeBtn");
+    const cameraModeBtn = document.getElementById("cameraModeBtn");
+    const gridModeBtn = document.getElementById("gridModeBtn");
+    const dungeonModeBtn = document.getElementById("dungeonModeBtn");
+    const fogControls = document.getElementById("fogControls");
+    const markerControls = document.getElementById("markerControls");
+    const cameraControls = document.getElementById("cameraControls");
+    const gridControls = document.getElementById("gridControls");
+    const dungeonControls = document.getElementById("dungeonControls");
+    const dungeonBrushSizeEl = document.getElementById("dungeonBrushSize");
+    const dungeonBrushSizeLabel = document.getElementById("dungeonBrushSizeLabel");
+    const dungeonColorSwatches = document.getElementById("dungeonColorSwatches");
+    const dungeonColorSwatchesRecent = document.getElementById("dungeonColorSwatchesRecent");
+    const dungeonColorWheel = document.getElementById("dungeonColorWheel");
+    const dungeonNewSegmentBtn = document.getElementById("dungeonNewSegmentBtn");
+    const dungeonNotesPanel = document.getElementById("dungeonNotesPanel");
+    const dungeonSegmentName = document.getElementById("dungeonSegmentName");
+    const dungeonSegmentNotes = document.getElementById("dungeonSegmentNotes");
+    const dungeonDeleteSegmentBtn = document.getElementById("dungeonDeleteSegmentBtn");
+    const dungeonSegmentList = document.getElementById("dungeonSegmentList");
+    const revealModeBtn = document.getElementById("revealModeBtn");
+    const coverModeBtn = document.getElementById("coverModeBtn");
+    const brushSize = document.getElementById("brushSize");
+    const brushSizeLabel = document.getElementById("brushSizeLabel");
+    const brushDot = document.getElementById("brushDot");
+    const softEdge = document.getElementById("softEdge");
+    const fogOpacity = document.getElementById("fogOpacity");
+    const fogOpacityLabel = document.getElementById("fogOpacityLabel");
+    const undoBtn = document.getElementById("undoBtn");
+    const resetFogBtn = document.getElementById("resetFogBtn");
+    const clearFogBtn = document.getElementById("clearFogBtn");
+    const colorSwatches = document.getElementById("colorSwatches");
+    const colorSwatchesRecent = document.getElementById("colorSwatchesRecent");
+    const markerColorWheel = document.getElementById("markerColorWheel");
+    const shapeSwatches = document.getElementById("shapeSwatches");
+    const deleteSelectedMarkerBtn = document.getElementById("deleteSelectedMarkerBtn");
+    const zoomInBtn = document.getElementById("zoomInBtn");
+    const zoomOutBtn = document.getElementById("zoomOutBtn");
+    const fitFullBtn = document.getElementById("fitFullBtn");
+    const gridEnabledEl = document.getElementById("gridEnabled");
+    const gridColorEl = document.getElementById("gridColor");
+    const gridSizeEl = document.getElementById("gridSize");
+    const gridSizeLabel = document.getElementById("gridSizeLabel");
+    const gridOffsetXEl = document.getElementById("gridOffsetX");
+    const gridOffsetXLabel = document.getElementById("gridOffsetXLabel");
+    const gridOffsetYEl = document.getElementById("gridOffsetY");
+    const gridOffsetYLabel = document.getElementById("gridOffsetYLabel");
+    const gridOpacityEl = document.getElementById("gridOpacity");
+    const gridOpacityLabel = document.getElementById("gridOpacityLabel");
+    const undoContextLabel = document.getElementById("undoContextLabel");
+    const aoeModeBtn = document.getElementById("aoeModeBtn");
+    const aoeControls = document.getElementById("aoeControls");
+    const calibrateModeBtn = document.getElementById("calibrateModeBtn");
+    const calibrateControls = document.getElementById("calibrateControls");
+    const aoeCircleBtn = document.getElementById("aoeCircleBtn");
+    const aoeSquareBtn = document.getElementById("aoeSquareBtn");
+    const aoeConeBtn = document.getElementById("aoeConeBtn");
+    const aoeFtLabel = document.getElementById("aoeFtLabel");
+    const aoeFtEl = document.getElementById("aoeFt");
+    const aoeRotationEl = document.getElementById("aoeRotation");
+    const aoeRotationLabel = document.getElementById("aoeRotationLabel");
+    const aoeColorSwatches = document.getElementById("aoeColorSwatches");
+    const aoeColorSwatchesRecent = document.getElementById("aoeColorSwatchesRecent");
+    const aoeColorWheel = document.getElementById("aoeColorWheel");
+    const aoeVisibleToggle = document.getElementById("aoeVisibleToggle");
+    const diceModeBtn = document.getElementById("diceModeBtn");
+    const diceControls = document.getElementById("diceControls");
+    const diceTypeButtons = document.getElementById("diceTypeButtons");
+    const diceCountEl = document.getElementById("diceCount");
+    const diceModifierEl = document.getElementById("diceModifier");
+    const diceAdvBtn = document.getElementById("diceAdvBtn");
+    const diceNormalBtn = document.getElementById("diceNormalBtn");
+    const diceDisBtn = document.getElementById("diceDisBtn");
+    const rollDiceBtn = document.getElementById("rollDiceBtn");
+    const diceResultEl = document.getElementById("diceResult");
+    const diceHistoryList = document.getElementById("diceHistoryList");
+    const dicePoolRow = document.getElementById("dicePoolRow");
+    const dicePoolTotal = document.getElementById("dicePoolTotal");
+    const clearPoolBtn = document.getElementById("clearPoolBtn");
+    const revealPoolBtn = document.getElementById("revealPoolBtn");
+    const initModeBtn = document.getElementById("initModeBtn");
+    const initiativeControls = document.getElementById("initiativeControls");
+    const combatantNameEl = document.getElementById("combatantName");
+    const combatantScoreEl = document.getElementById("combatantScore");
+    const addCombatantBtn = document.getElementById("addCombatantBtn");
+    const roundLabel = document.getElementById("roundLabel");
+    const nextTurnBtn = document.getElementById("nextTurnBtn");
+    const resetInitiativeBtn = document.getElementById("resetInitiativeBtn");
+    const initiativeShowOnDisplay = document.getElementById("initiativeShowOnDisplay");
+    const combatantList = document.getElementById("combatantList");
+    const deleteSelectedAoeBtn = document.getElementById("deleteSelectedAoeBtn");
+    const aoeCalibrationGridNote = document.getElementById("aoeCalibrationGridNote");
+    const aoeCalibrationManualRow = document.getElementById("aoeCalibrationManualRow");
+    const aoeCalibrationEl = document.getElementById("aoeCalibration");
+    const calibRefLenButtons = document.getElementById("calibRefLenButtons");
+    const calibCustomFt = document.getElementById("calibCustomFt");
+    const calibDrawLineBtn = document.getElementById("calibDrawLineBtn");
+    const calibShowSquareBtn = document.getElementById("calibShowSquareBtn");
+    const aoeZoomLockToggle = document.getElementById("aoeZoomLockToggle");
+    const calibSnapZoomBtn = document.getElementById("calibSnapZoomBtn");
+    const ctx = workCanvas.getContext("2d");
+    (function initSidebarResize() {
+      const handle = document.getElementById("sidebarResizeHandle");
+      const controlsEl = document.querySelector(".controls");
+      const MIN_W = 220, MAX_W = 560;
+      let dragging = false;
+      handle.addEventListener("mousedown", (e) => {
+        dragging = true;
+        handle.classList.add("dragging");
+        e.preventDefault();
+      });
+      window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const rect = controlsEl.getBoundingClientRect();
+        const newW = Math.max(MIN_W, Math.min(MAX_W, e.clientX - rect.left));
+        controlsEl.style.width = newW + "px";
+      });
+      window.addEventListener("mouseup", () => {
+        if (dragging) {
+          dragging = false;
+          handle.classList.remove("dragging");
+        }
+      });
+    })();
+    let slides = [];
+    let currentSlideId = null;
+    let nextSlideId = 1;
+    function cs() {
+      return slides.find((s) => s.id === currentSlideId) || null;
+    }
+    let appMode = "maps";
+    let fogDir = "reveal";
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+    const UNDO_LIMIT = 25;
+    let fogViewOpacity = 0.55;
+    let gridColor = "#ffffff";
+    const DICE_SIDES = [4, 6, 8, 10, 12, 20, 100];
+    let diceSides = 20;
+    let diceAdvMode = "normal";
+    let diceHistory = [];
+    let diceRevealedId = null;
+    let nextDiceId = 1;
+    const DICE_HISTORY_LIMIT = 50;
+    let dicePool = [];
+    let nextPoolId = 1;
+    let dicePoolRevealed = false;
+    let initiative = { combatants: [], currentCombatantId: null, round: 1, showOnDisplay: false };
+    let nextCombatantId = 1;
+    let nextHpLogId = 1;
+    let displayWindowManager = null;
+    const MARKER_COLORS = ["#ff5b5b", "#ffd23f", "#4fa3ff", "#4fd67f", "#c77dff"];
+    let markerColor = MARKER_COLORS[0];
+    const MARKER_SHAPES = ["x", "circle", "square", "triangle", "star", "skull", "chest"];
+    let markerShape = "x";
+    let nextMarkerId = 1;
+    let selectedMarkerId = null;
+    let draggingMarker = null;
+    let dragGrabOffset = { dx: 0, dy: 0 };
+    const shapeSwatchCtxs = [];
+    let cameraDrag = null;
+    const AOE_COLORS = ["#ff5b5b", "#ffd23f", "#4fa3ff", "#4fd67f", "#c77dff"];
+    let aoeColor = AOE_COLORS[0];
+    let aoeShapeType = "circle";
+    let aoeFt = 20;
+    let aoeRotationDeg = 0;
+    let nextAoeId = 1;
+    let selectedAoeId = null;
+    let draggingAoe = null;
+    let rotatingAoe = null;
+    let calibRefFt = 5;
+    let calibratingLine = false;
+    let draggingCalibLine = false;
+    let calibLineStart = null;
+    let calibLineCurrent = null;
+    let calibShowingSquare = false;
+    const DUNGEON_COLORS = ["#ff5b5b", "#ffd23f", "#4fa3ff", "#4fd67f", "#c77dff"];
+    let dungeonColor = DUNGEON_COLORS[0];
+    let nextDungeonId = 1;
+    let dungeonActiveSegmentId = null;
+    let dungeonPainting = false;
+    const TAB_CATEGORY = {
+      brush: "map",
+      markers: "map",
+      grid: "map",
+      dungeon: "map",
+      camera: "display",
+      calibrate: "display",
+      aoe: "tools",
+      dice: "tools",
+      init: "tools"
+    };
+    let lastActiveInCategory = { map: "brush", display: "camera", tools: "aoe" };
+    let dragGrabOffsetAoe = { dx: 0, dy: 0 };
+    const HANDLE_SIZE = 14;
+    const { setup: setupColorPicker, highlight: highlightColorPicker } = createSharedColorPicker();
+    setupColorPicker(colorSwatches, colorSwatchesRecent, markerColorWheel, MARKER_COLORS, markerColor, (hex) => {
+      markerColor = hex;
+      renderShapeSwatchPreviews();
+    });
+    MARKER_SHAPES.forEach((shape) => {
+      const b = document.createElement("button");
+      b.className = "shape-swatch" + (shape === markerShape ? " active" : "");
+      b.dataset.shape = shape;
+      const c = document.createElement("canvas");
+      c.width = 30;
+      c.height = 30;
+      b.appendChild(c);
+      shapeSwatchCtxs.push({ shape, canvas: c });
+      b.addEventListener("click", () => {
+        markerShape = shape;
+        [...shapeSwatches.children].forEach((ch) => ch.classList.remove("active"));
+        b.classList.add("active");
+      });
+      shapeSwatches.appendChild(b);
+    });
+    function renderShapeSwatchPreviews() {
+      shapeSwatchCtxs.forEach(({ shape, canvas }) => {
+        const c2 = canvas.getContext("2d");
+        c2.clearRect(0, 0, canvas.width, canvas.height);
+        drawMarkerShape(c2, shape, 15, 16, 10, markerColor);
+      });
+    }
+    renderShapeSwatchPreviews();
+    setupColorPicker(aoeColorSwatches, aoeColorSwatchesRecent, aoeColorWheel, AOE_COLORS, aoeColor, (hex) => {
+      aoeColor = hex;
+      const s = cs();
+      const shape = s && selectedAoeId !== null ? s.aoeShapes.find((a) => a.id === selectedAoeId) : null;
+      if (shape) {
+        shape.color = hex;
+        pushAoeUndo(s);
+        redraw();
+      }
+    });
+    setupColorPicker(dungeonColorSwatches, dungeonColorSwatchesRecent, dungeonColorWheel, DUNGEON_COLORS, dungeonColor, (hex) => {
+      dungeonColor = hex;
+      const s = cs();
+      const seg = s && dungeonActiveSegmentId !== null ? s.dungeonSegments.find((sg) => sg.id === dungeonActiveSegmentId) : null;
+      if (seg) {
+        seg.color = hex;
+        pushDungeonUndo(s);
+        renderDungeonSegments();
+        redraw();
+      }
+    });
+    DICE_SIDES.forEach((sides) => {
+      const b = document.createElement("button");
+      b.textContent = "d" + sides;
+      if (sides === diceSides) b.classList.add("active");
+      b.addEventListener("click", () => {
+        diceSides = sides;
+        [...diceTypeButtons.children].forEach((ch) => ch.classList.remove("active"));
+        b.classList.add("active");
+        rollIntoPool(sides);
+      });
+      diceTypeButtons.appendChild(b);
+    });
+    function loadImageFromFile(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+    async function handleFiles(fileList) {
+      const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+      for (const f of files) {
+        try {
+          const img = await loadImageFromFile(f);
+          addSlideFromImage(img, f.name.replace(/\.[^/.]+$/, ""));
+        } catch (e) {
+        }
+      }
+    }
+    function addSlideFromImage(img, name) {
+      const MAX_DIM = 2400;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, MAX_DIM / Math.max(w, h));
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+      const mapCanvas = document.createElement("canvas");
+      mapCanvas.width = w;
+      mapCanvas.height = h;
+      mapCanvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const fogCanvas = document.createElement("canvas");
+      fogCanvas.width = w;
+      fogCanvas.height = h;
+      const fogCtx = fogCanvas.getContext("2d");
+      const thumbCanvas = document.createElement("canvas");
+      const thumbW = 92, thumbH = Math.round(thumbW * (h / w));
+      thumbCanvas.width = thumbW;
+      thumbCanvas.height = thumbH;
+      thumbCanvas.getContext("2d").drawImage(mapCanvas, 0, 0, thumbW, thumbH);
+      const slide = {
+        id: nextSlideId++,
+        name: name || "Map " + (slides.length + 1),
+        mapCanvas,
+        fogCanvas,
+        fogCtx,
+        mapDataUrl: mapCanvas.toDataURL("image/jpeg", 0.9),
+        thumb: thumbCanvas.toDataURL("image/jpeg", 0.7),
+        markers: [],
+        camera: { x: 0, y: 0, w, h },
+        grid: { enabled: false, size: 100, offsetX: 0, offsetY: 0, opacity: 1 },
+        aoeShapes: [],
+        aoeCalibration: 100,
+        // pixels per 5ft square, used only when this map has no grid
+        aoeZoomLock: false,
+        aoeZoomLockRefCalibration: null,
+        aoeZoomLockRefCamW: null,
+        aoeZoomLockRefCamera: null,
+        dungeonSegments: [],
+        undoStack: [],
+        markersUndoStack: [],
+        cameraUndoStack: [],
+        gridUndoStack: [],
+        aoeUndoStack: [],
+        dungeonUndoStack: []
+      };
+      slide.undoStack.push(snapshotFog(slide));
+      slide.markersUndoStack.push(cloneValue(slide.markers));
+      slide.cameraUndoStack.push(snapshotCamera(slide.camera));
+      slide.gridUndoStack.push(snapshotGrid(slide.grid));
+      slide.aoeUndoStack.push(snapshotAoe(slide));
+      slide.dungeonUndoStack.push(cloneValue(slide.dungeonSegments));
+      slides.push(slide);
+      renderSlideList();
+      if (currentSlideId === null) selectSlide(slide.id);
+    }
+    function snapshotFog(slide) {
+      const snap = document.createElement("canvas");
+      snap.width = slide.fogCanvas.width;
+      snap.height = slide.fogCanvas.height;
+      snap.getContext("2d").drawImage(slide.fogCanvas, 0, 0);
+      return snap;
+    }
+    fileInput.addEventListener("change", (e) => {
+      handleFiles(e.target.files);
+      fileInput.value = "";
+    });
+    ["dragenter", "dragover"].forEach((evt) => {
+      canvasArea.addEventListener(evt, (e) => {
+        e.preventDefault();
+        canvasArea.classList.add("drag-over");
+      });
+    });
+    ["dragleave", "drop"].forEach((evt) => {
+      canvasArea.addEventListener(evt, (e) => {
+        if (evt === "dragleave" && e.target !== canvasArea) return;
+        canvasArea.classList.remove("drag-over");
+      });
+    });
+    canvasArea.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        handleFiles(e.dataTransfer.files);
+      }
+    });
+    function serializeSession() {
+      return {
+        version: 1,
+        currentIndex: slides.findIndex((s) => s.id === currentSlideId),
+        fogViewOpacity,
+        gridColor,
+        diceHistory,
+        dicePool,
+        initiative: { combatants: initiative.combatants, currentCombatantId: initiative.currentCombatantId, round: initiative.round, showOnDisplay: initiative.showOnDisplay },
+        slides: slides.map((s) => ({
+          name: s.name,
+          mapDataUrl: s.mapDataUrl,
+          fogDataUrl: s.fogCanvas.toDataURL("image/png"),
+          thumb: s.thumb,
+          markers: s.markers,
+          camera: s.camera,
+          grid: s.grid,
+          aoeShapes: s.aoeShapes,
+          aoeCalibration: s.aoeCalibration,
+          aoeZoomLock: s.aoeZoomLock,
+          aoeZoomLockRefCalibration: s.aoeZoomLockRefCalibration,
+          aoeZoomLockRefCamW: s.aoeZoomLockRefCamW,
+          aoeZoomLockRefCamera: s.aoeZoomLockRefCamera,
+          dungeonSegments: s.dungeonSegments
+        }))
+      };
+    }
+    saveSessionBtn.addEventListener("click", () => {
+      if (slides.length === 0) {
+        alert("Nothing to save yet \u2014 add a map first.");
+        return;
+      }
+      const data = serializeSession();
+      const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      a.download = "tavern-mapper-session-" + stamp + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1e3);
+    });
+    function loadImageFromDataUrl(url) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+    }
+    async function restoreSession(data) {
+      const restored = [];
+      for (const sd of data.slides) {
+        const mapImg = await loadImageFromDataUrl(sd.mapDataUrl);
+        const fogImg = await loadImageFromDataUrl(sd.fogDataUrl);
+        const mapCanvas = document.createElement("canvas");
+        mapCanvas.width = mapImg.naturalWidth;
+        mapCanvas.height = mapImg.naturalHeight;
+        mapCanvas.getContext("2d").drawImage(mapImg, 0, 0);
+        const fogCanvas = document.createElement("canvas");
+        fogCanvas.width = mapCanvas.width;
+        fogCanvas.height = mapCanvas.height;
+        const fogCtx = fogCanvas.getContext("2d");
+        fogCtx.drawImage(fogImg, 0, 0);
+        const rawGrid = Object.assign({ enabled: false, size: 100, offsetX: 0, offsetY: 0, opacity: 1 }, sd.grid || {});
+        const safeSize = typeof rawGrid.size === "number" && rawGrid.size >= 20 && isFinite(rawGrid.size) ? rawGrid.size : 100;
+        const clampOffset = (v) => typeof v === "number" && isFinite(v) ? Math.max(-150, Math.min(150, v)) : 0;
+        const safeOpacity = typeof rawGrid.opacity === "number" && isFinite(rawGrid.opacity) ? Math.max(0, Math.min(1, rawGrid.opacity)) : 1;
+        const rawCamera = sd.camera || {};
+        const safeCamera = {
+          w: typeof rawCamera.w === "number" && rawCamera.w > 0 ? Math.min(rawCamera.w, mapCanvas.width) : mapCanvas.width,
+          h: typeof rawCamera.h === "number" && rawCamera.h > 0 ? Math.min(rawCamera.h, mapCanvas.height) : mapCanvas.height
+        };
+        safeCamera.x = typeof rawCamera.x === "number" && isFinite(rawCamera.x) ? Math.max(0, Math.min(rawCamera.x, mapCanvas.width - safeCamera.w)) : 0;
+        safeCamera.y = typeof rawCamera.y === "number" && isFinite(rawCamera.y) ? Math.max(0, Math.min(rawCamera.y, mapCanvas.height - safeCamera.h)) : 0;
+        const safeAoeCalibration = typeof sd.aoeCalibration === "number" && sd.aoeCalibration >= 10 && isFinite(sd.aoeCalibration) ? sd.aoeCalibration : 100;
+        const AOE_TYPES = ["circle", "square", "cone"];
+        const rawLockCam = sd.aoeZoomLockRefCamera;
+        const safeLockCam = rawLockCam && typeof rawLockCam.w === "number" && rawLockCam.w > 0 && typeof rawLockCam.h === "number" && rawLockCam.h > 0 && typeof rawLockCam.x === "number" && isFinite(rawLockCam.x) && typeof rawLockCam.y === "number" && isFinite(rawLockCam.y) ? { x: rawLockCam.x, y: rawLockCam.y, w: Math.min(rawLockCam.w, mapCanvas.width), h: Math.min(rawLockCam.h, mapCanvas.height) } : null;
+        const safeLockRefCalibration = typeof sd.aoeZoomLockRefCalibration === "number" && sd.aoeZoomLockRefCalibration > 0 && isFinite(sd.aoeZoomLockRefCalibration) ? sd.aoeZoomLockRefCalibration : null;
+        const safeLockRefCamW = typeof sd.aoeZoomLockRefCamW === "number" && sd.aoeZoomLockRefCamW > 0 && isFinite(sd.aoeZoomLockRefCamW) ? sd.aoeZoomLockRefCamW : null;
+        const safeZoomLock = !!sd.aoeZoomLock && !!safeLockCam && safeLockRefCalibration !== null && safeLockRefCamW !== null;
+        const slide = {
+          id: nextSlideId++,
+          name: sd.name || "Map",
+          mapCanvas,
+          fogCanvas,
+          fogCtx,
+          mapDataUrl: sd.mapDataUrl,
+          thumb: sd.thumb,
+          markers: Array.isArray(sd.markers) ? sd.markers.map((m) => ({
+            id: nextMarkerId++,
+            x: typeof m.x === "number" ? m.x : 0,
+            y: typeof m.y === "number" ? m.y : 0,
+            color: m.color || MARKER_COLORS[0],
+            shape: MARKER_SHAPES.includes(m.shape) ? m.shape : "x",
+            label: typeof m.label === "string" ? m.label : ""
+          })) : [],
+          camera: safeCamera,
+          grid: { enabled: !!rawGrid.enabled, size: safeSize, offsetX: clampOffset(rawGrid.offsetX), offsetY: clampOffset(rawGrid.offsetY), opacity: safeOpacity },
+          aoeShapes: Array.isArray(sd.aoeShapes) ? sd.aoeShapes.map((a) => ({
+            id: nextAoeId++,
+            type: AOE_TYPES.includes(a.type) ? a.type : "circle",
+            x: typeof a.x === "number" && isFinite(a.x) ? a.x : 0,
+            y: typeof a.y === "number" && isFinite(a.y) ? a.y : 0,
+            ft: typeof a.ft === "number" && a.ft > 0 && isFinite(a.ft) ? a.ft : 20,
+            rotation: typeof a.rotation === "number" && isFinite(a.rotation) ? a.rotation : 0,
+            color: a.color || AOE_COLORS[0],
+            visible: typeof a.visible === "boolean" ? a.visible : true
+          })) : [],
+          aoeCalibration: safeAoeCalibration,
+          aoeZoomLock: safeZoomLock,
+          aoeZoomLockRefCalibration: safeZoomLock ? safeLockRefCalibration : null,
+          aoeZoomLockRefCamW: safeZoomLock ? safeLockRefCamW : null,
+          aoeZoomLockRefCamera: safeZoomLock ? safeLockCam : null,
+          dungeonSegments: Array.isArray(sd.dungeonSegments) ? sd.dungeonSegments.map((seg) => ({
+            id: nextDungeonId++,
+            name: typeof seg.name === "string" ? seg.name : "Segment",
+            color: seg.color || DUNGEON_COLORS[0],
+            notes: typeof seg.notes === "string" ? seg.notes : "",
+            strokes: Array.isArray(seg.strokes) ? seg.strokes.map((st) => ({
+              brushSize: typeof st.brushSize === "number" && st.brushSize > 0 && isFinite(st.brushSize) ? st.brushSize : 60,
+              points: Array.isArray(st.points) ? st.points.filter((pt) => pt && typeof pt.x === "number" && typeof pt.y === "number" && isFinite(pt.x) && isFinite(pt.y)) : []
+            })).filter((st) => st.points.length > 0) : []
+          })) : [],
+          undoStack: [],
+          markersUndoStack: [],
+          cameraUndoStack: [],
+          gridUndoStack: [],
+          aoeUndoStack: [],
+          dungeonUndoStack: []
+        };
+        slide.undoStack.push(snapshotFog(slide));
+        slide.markersUndoStack.push(cloneValue(slide.markers));
+        slide.cameraUndoStack.push(snapshotCamera(slide.camera));
+        slide.gridUndoStack.push(snapshotGrid(slide.grid));
+        slide.aoeUndoStack.push(snapshotAoe(slide));
+        slide.dungeonUndoStack.push(cloneValue(slide.dungeonSegments));
+        restored.push(slide);
+      }
+      slides = restored;
+      currentSlideId = null;
+      if (typeof data.fogViewOpacity === "number") {
+        fogViewOpacity = data.fogViewOpacity;
+        fogOpacity.value = Math.round(fogViewOpacity * 100);
+        fogOpacityLabel.textContent = fogOpacity.value + "%";
+      }
+      if (data.gridColor) {
+        gridColor = data.gridColor;
+        gridColorEl.value = gridColor;
+      }
+      if (Array.isArray(data.diceHistory)) {
+        diceHistory = data.diceHistory.filter((d) => d && typeof d.label === "string" && typeof d.finalTotal === "number").slice(-DICE_HISTORY_LIMIT).map((d) => ({ ...d, id: nextDiceId++ }));
+      } else {
+        diceHistory = [];
+      }
+      diceRevealedId = null;
+      renderDiceHistory();
+      diceResultEl.innerHTML = "";
+      if (Array.isArray(data.dicePool)) {
+        dicePool = data.dicePool.filter((e) => e && typeof e.sides === "number" && typeof e.value === "number").map((e) => ({ id: nextPoolId++, sides: e.sides, value: e.value }));
+      } else {
+        dicePool = [];
+      }
+      dicePoolRevealed = false;
+      renderDicePool();
+      const rawInit = data.initiative || {};
+      const rawCombatants = Array.isArray(rawInit.combatants) ? rawInit.combatants.filter((c) => c && typeof c.name === "string" && typeof c.score === "number" && isFinite(c.score)) : [];
+      const currentIdxInRaw = rawCombatants.findIndex((c) => c.id === rawInit.currentCombatantId);
+      const safeCombatants = rawCombatants.map((c) => {
+        let hpLog;
+        if (Array.isArray(c.hpLog)) {
+          hpLog = c.hpLog.filter((e) => e && (e.type === "set" || e.type === "delta") && typeof e.value === "number" && isFinite(e.value)).map((e) => ({ id: nextHpLogId++, type: e.type, value: e.value, raw: typeof e.raw === "string" ? e.raw : String(e.value) }));
+        } else if (typeof c.hp === "number" && isFinite(c.hp)) {
+          hpLog = [{ id: nextHpLogId++, type: "set", value: c.hp, raw: String(c.hp) }];
+        } else {
+          hpLog = [];
+        }
+        return {
+          id: nextCombatantId++,
+          name: c.name,
+          score: c.score,
+          ac: typeof c.ac === "number" && isFinite(c.ac) ? c.ac : null,
+          hpLog
+        };
+      });
+      initiative = {
+        combatants: safeCombatants,
+        // ids were just reassigned above, so match the previously-current combatant by its position
+        // in the saved array instead — otherwise every load would silently reset whose turn it is.
+        currentCombatantId: currentIdxInRaw >= 0 && safeCombatants[currentIdxInRaw] ? safeCombatants[currentIdxInRaw].id : null,
+        round: typeof rawInit.round === "number" && rawInit.round >= 1 ? Math.floor(rawInit.round) : 1,
+        showOnDisplay: !!rawInit.showOnDisplay
+      };
+      renderInitiative();
+      renderSlideList();
+      if (slides.length) {
+        const idx = typeof data.currentIndex === "number" && slides[data.currentIndex] ? data.currentIndex : 0;
+        selectSlide(slides[idx].id);
+      } else {
+        workCanvas.style.display = "none";
+        emptyState.style.display = "block";
+        dimsLabel.textContent = "";
+      }
+      updateDisplayExtras();
+    }
+    loadSessionInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (slides.length > 0 && !confirm("Loading a session replaces all maps currently loaded, including their fog and markers. Continue?")) {
+        loadSessionInput.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!data || !Array.isArray(data.slides)) throw new Error("bad format");
+          await restoreSession(data);
+        } catch (err) {
+          alert("Could not read that session file \u2014 it may be corrupted or not a valid export from this app.");
+        }
+        loadSessionInput.value = "";
+      };
+      reader.onerror = () => {
+        alert("Could not read that file.");
+        loadSessionInput.value = "";
+      };
+      reader.readAsText(file);
+    });
+    let draggingId = null;
+    function renderSlideList() {
+      slideListEl.innerHTML = "";
+      slides.forEach((s) => {
+        const row = document.createElement("div");
+        row.className = "slide-item" + (s.id === currentSlideId ? " active" : "");
+        row.draggable = true;
+        row.dataset.id = s.id;
+        const img = document.createElement("img");
+        img.className = "slide-thumb";
+        img.src = s.thumb;
+        const name = document.createElement("div");
+        name.className = "slide-name";
+        name.textContent = s.name;
+        const remove = document.createElement("button");
+        remove.className = "slide-remove";
+        remove.textContent = "\u2715";
+        remove.title = "Remove this map";
+        remove.addEventListener("click", (e) => {
+          e.stopPropagation();
+          removeSlide(s.id);
+        });
+        row.appendChild(img);
+        row.appendChild(name);
+        row.appendChild(remove);
+        row.addEventListener("click", () => selectSlide(s.id));
+        row.addEventListener("dragstart", () => {
+          draggingId = s.id;
+        });
+        row.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          row.classList.add("drag-hint");
+        });
+        row.addEventListener("dragleave", () => row.classList.remove("drag-hint"));
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          row.classList.remove("drag-hint");
+          if (draggingId === null || draggingId === s.id) return;
+          const fromIdx = slides.findIndex((x) => x.id === draggingId);
+          const toIdx = slides.findIndex((x) => x.id === s.id);
+          const [moved] = slides.splice(fromIdx, 1);
+          slides.splice(toIdx, 0, moved);
+          draggingId = null;
+          renderSlideList();
+          scheduleAutosave();
+        });
+        slideListEl.appendChild(row);
+      });
+    }
+    function selectSlide(id) {
+      currentSlideId = id;
+      selectedMarkerId = null;
+      draggingMarker = null;
+      selectedAoeId = null;
+      draggingAoe = null;
+      rotatingAoe = null;
+      calibratingLine = false;
+      draggingCalibLine = false;
+      calibLineStart = null;
+      calibLineCurrent = null;
+      calibShowingSquare = false;
+      calibDrawLineBtn.textContent = "Draw a line to calibrate\u2026";
+      calibDrawLineBtn.classList.remove("primary");
+      calibShowSquareBtn.textContent = "Show reference square";
+      calibShowSquareBtn.classList.remove("primary");
+      dungeonActiveSegmentId = null;
+      dungeonPainting = false;
+      dungeonNotesPanel.style.display = "none";
+      const s = cs();
+      if (!s) return;
+      workCanvas.width = s.mapCanvas.width;
+      workCanvas.height = s.mapCanvas.height;
+      workCanvas.style.display = "block";
+      emptyState.style.display = "none";
+      dimsLabel.textContent = s.name + " \u2014 " + s.mapCanvas.width + " \xD7 " + s.mapCanvas.height + "px";
+      gridEnabledEl.checked = s.grid.enabled;
+      gridSizeEl.value = s.grid.size;
+      gridSizeLabel.textContent = s.grid.size + "px";
+      gridOffsetXEl.value = s.grid.offsetX;
+      gridOffsetXLabel.textContent = s.grid.offsetX + "px";
+      gridOffsetYEl.value = s.grid.offsetY;
+      gridOffsetYLabel.textContent = s.grid.offsetY + "px";
+      gridOpacityEl.value = Math.round((typeof s.grid.opacity === "number" ? s.grid.opacity : 1) * 100);
+      gridOpacityLabel.textContent = gridOpacityEl.value + "%";
+      updateCalibrationUI();
+      renderDungeonSegments();
+      renderSlideList();
+      redraw();
+    }
+    function removeSlide(id) {
+      const idx = slides.findIndex((s2) => s2.id === id);
+      if (idx === -1) return;
+      const s = slides[idx];
+      const ok = confirm('Remove "' + s.name + '"? This deletes its fog, markers, and camera framing permanently \u2014 there is no undo for this.');
+      if (!ok) return;
+      slides.splice(idx, 1);
+      if (currentSlideId === id) {
+        if (slides.length === 0) {
+          currentSlideId = null;
+          workCanvas.style.display = "none";
+          emptyState.style.display = "block";
+          dimsLabel.textContent = "";
+        } else {
+          selectSlide(slides[Math.min(idx, slides.length - 1)].id);
+        }
+      }
+      renderSlideList();
+      scheduleAutosave();
+    }
+    prevSlideBtn.addEventListener("click", () => {
+      if (slides.length < 2 || !cs()) return;
+      const idx = slides.findIndex((s) => s.id === currentSlideId);
+      const newIdx = (idx - 1 + slides.length) % slides.length;
+      selectSlide(slides[newIdx].id);
+    });
+    nextSlideBtn.addEventListener("click", () => {
+      if (slides.length < 2 || !cs()) return;
+      const idx = slides.findIndex((s) => s.id === currentSlideId);
+      const newIdx = (idx + 1) % slides.length;
+      selectSlide(slides[newIdx].id);
+    });
+    function pxPerFoot(s) {
+      return s.grid.enabled ? s.grid.size / 5 : s.aoeCalibration / 5;
+    }
+    function drawCalibLineOnCtx(targetCtx, transform, scale) {
+      if (!calibLineStart || !calibLineCurrent) return;
+      const [sx, sy] = transform(calibLineStart.x, calibLineStart.y);
+      const [ex, ey] = transform(calibLineCurrent.x, calibLineCurrent.y);
+      targetCtx.save();
+      targetCtx.strokeStyle = "#ffd23f";
+      targetCtx.lineWidth = Math.max(2, 3 * scale);
+      targetCtx.setLineDash([8 * scale, 5 * scale]);
+      targetCtx.beginPath();
+      targetCtx.moveTo(sx, sy);
+      targetCtx.lineTo(ex, ey);
+      targetCtx.stroke();
+      targetCtx.setLineDash([]);
+      [[sx, sy], [ex, ey]].forEach(([hx, hy]) => {
+        targetCtx.beginPath();
+        targetCtx.arc(hx, hy, Math.max(4, 5 * scale), 0, Math.PI * 2);
+        targetCtx.fillStyle = "#ffd23f";
+        targetCtx.fill();
+      });
+      const midX = (sx + ex) / 2, midY = (sy + ey) / 2;
+      const label = calibRefFt + "ft";
+      targetCtx.font = Math.max(13, 14 * scale) + 'px -apple-system, "Segoe UI", Roboto, sans-serif';
+      const textW = targetCtx.measureText(label).width;
+      targetCtx.fillStyle = "rgba(10,11,14,0.85)";
+      targetCtx.fillRect(midX - textW / 2 - 6, midY - 22 * scale, textW + 12, 20 * scale);
+      targetCtx.fillStyle = "#ffd23f";
+      targetCtx.textBaseline = "middle";
+      targetCtx.fillText(label, midX - textW / 2, midY - 12 * scale);
+      targetCtx.restore();
+    }
+    function drawCalibSquareOnCtx(targetCtx, s, transform, scale) {
+      if (!calibShowingSquare) return;
+      const ppf = pxPerFoot(s);
+      const center = { x: s.camera.x + s.camera.w / 2, y: s.camera.y + s.camera.h / 2 };
+      const geom = computeAoeGeometry({ type: "square", x: center.x, y: center.y, ft: calibRefFt, rotation: 0 }, ppf);
+      targetCtx.save();
+      targetCtx.strokeStyle = "#ffd23f";
+      targetCtx.lineWidth = Math.max(2, 3 * scale);
+      targetCtx.setLineDash([8 * scale, 5 * scale]);
+      targetCtx.beginPath();
+      geom.points.forEach(([px, py], i) => {
+        const [sx, sy] = transform(px, py);
+        if (i === 0) targetCtx.moveTo(sx, sy);
+        else targetCtx.lineTo(sx, sy);
+      });
+      targetCtx.closePath();
+      targetCtx.stroke();
+      targetCtx.setLineDash([]);
+      const [cx, cy] = transform(center.x, center.y);
+      const label = calibRefFt + "ft square";
+      targetCtx.font = Math.max(13, 14 * scale) + 'px -apple-system, "Segoe UI", Roboto, sans-serif';
+      const textW = targetCtx.measureText(label).width;
+      targetCtx.fillStyle = "rgba(10,11,14,0.85)";
+      targetCtx.fillRect(cx - textW / 2 - 6, cy - 10 * scale, textW + 12, 20 * scale);
+      targetCtx.fillStyle = "#ffd23f";
+      targetCtx.textBaseline = "middle";
+      targetCtx.fillText(label, cx - textW / 2, cy);
+      targetCtx.restore();
+    }
+    function hitTestAoe(s, x, y) {
+      const ppf = pxPerFoot(s);
+      for (let i = s.aoeShapes.length - 1; i >= 0; i--) {
+        const shape = s.aoeShapes[i];
+        const geom = computeAoeGeometry(shape, ppf);
+        if (geom.kind === "circle") {
+          if (Math.hypot(x - geom.cx, y - geom.cy) <= geom.r) return shape;
+        } else if (pointInConvexPoly(x, y, geom.points)) {
+          return shape;
+        }
+      }
+      return null;
+    }
+    function updateCalibrationUI() {
+      const s = cs();
+      if (!s) return;
+      if (s.grid.enabled) {
+        aoeCalibrationGridNote.style.display = "block";
+        aoeCalibrationGridNote.textContent = "Using this map's grid: 1 square = 5ft (" + Math.round(s.grid.size) + "px).";
+        aoeCalibrationManualRow.style.display = "none";
+      } else {
+        aoeCalibrationGridNote.style.display = "none";
+        aoeCalibrationManualRow.style.display = "block";
+        aoeCalibrationEl.value = Math.round(s.aoeCalibration);
+        aoeZoomLockToggle.checked = !!s.aoeZoomLock;
+        calibSnapZoomBtn.style.display = s.aoeZoomLock && s.aoeZoomLockRefCamera ? "block" : "none";
+        aoeCalibrationEl.disabled = !!s.aoeZoomLock && !calibShowingSquare;
+      }
+    }
+    function syncAoeInspector(shape) {
+      if (!shape) return;
+      aoeShapeType = shape.type;
+      [aoeCircleBtn, aoeSquareBtn, aoeConeBtn].forEach((b) => b.classList.remove("active"));
+      ({ circle: aoeCircleBtn, square: aoeSquareBtn, cone: aoeConeBtn })[shape.type].classList.add("active");
+      aoeFtLabel.textContent = shape.type === "circle" ? "Radius (ft)" : shape.type === "square" ? "Side length (ft)" : "Length (ft)";
+      aoeFt = shape.ft;
+      aoeFtEl.value = shape.ft;
+      const deg = (Math.round(shape.rotation * 180 / Math.PI) % 360 + 360) % 360;
+      aoeRotationDeg = deg;
+      aoeRotationEl.value = deg;
+      aoeRotationLabel.textContent = deg + "\xB0";
+      aoeColor = shape.color;
+      highlightColorPicker(aoeColorSwatches, aoeColorSwatchesRecent, shape.color);
+      aoeColorWheel.value = shape.color;
+      aoeVisibleToggle.checked = shape.visible !== false;
+    }
+    function syncDungeonInspector(seg) {
+      if (!seg) return;
+      dungeonNotesPanel.style.display = "block";
+      dungeonSegmentName.value = seg.name;
+      dungeonSegmentNotes.value = seg.notes;
+      dungeonColor = seg.color;
+      highlightColorPicker(dungeonColorSwatches, dungeonColorSwatchesRecent, seg.color);
+      dungeonColorWheel.value = seg.color;
+    }
+    function renderDungeonSegments() {
+      const s = cs();
+      dungeonSegmentList.innerHTML = "";
+      if (!s) return;
+      s.dungeonSegments.forEach((seg) => {
+        const row = document.createElement("div");
+        row.className = "list-row" + (seg.id === dungeonActiveSegmentId ? " selected" : "");
+        const swatch = document.createElement("span");
+        swatch.style.cssText = "width:14px; height:14px; border-radius:50%; flex:none; display:inline-block;";
+        swatch.style.background = seg.color;
+        const main = document.createElement("div");
+        main.className = "row-main";
+        const title = document.createElement("div");
+        title.className = "row-title";
+        title.textContent = seg.name;
+        const sub = document.createElement("div");
+        sub.className = "row-sub";
+        sub.textContent = seg.notes ? seg.notes.length > 44 ? seg.notes.slice(0, 44) + "\u2026" : seg.notes : "No notes yet";
+        main.appendChild(title);
+        main.appendChild(sub);
+        row.appendChild(swatch);
+        row.appendChild(main);
+        row.addEventListener("click", () => {
+          dungeonActiveSegmentId = seg.id;
+          syncDungeonInspector(seg);
+          renderDungeonSegments();
+          redraw();
+        });
+        dungeonSegmentList.appendChild(row);
+      });
+    }
+    function performDiceRoll() {
+      const count = Math.max(1, Math.min(20, parseInt(diceCountEl.value, 10) || 1));
+      const modifier = parseInt(diceModifierEl.value, 10) || 0;
+      const a = rollDice(diceSides, count, modifier);
+      let b = null, kept = null;
+      if (diceAdvMode !== "normal") {
+        b = rollDice(diceSides, count, modifier);
+        kept = diceAdvMode === "adv" ? b.total > a.total ? "B" : "A" : b.total < a.total ? "B" : "A";
+      }
+      const finalTotal = kept === "B" ? b.total : a.total;
+      const modStr = modifier === 0 ? "" : modifier > 0 ? "+" + modifier : String(modifier);
+      let label = count + "d" + diceSides + modStr;
+      if (diceAdvMode === "adv") label += " (adv)";
+      if (diceAdvMode === "dis") label += " (dis)";
+      const entry = { id: nextDiceId++, label, rollsA: a.rolls, totalA: a.total, rollsB: b ? b.rolls : null, totalB: b ? b.total : null, kept, finalTotal };
+      diceHistory.push(entry);
+      if (diceHistory.length > DICE_HISTORY_LIMIT) diceHistory.shift();
+      renderDiceResult(entry);
+      renderDiceHistory();
+      scheduleAutosave();
+    }
+    function renderDiceResult(entry) {
+      diceResultEl.innerHTML = "<strong>" + entry.label + " = " + entry.finalTotal + "</strong> (" + entry.rollsA.join(", ") + (entry.rollsB ? " vs " + entry.rollsB.join(", ") : "") + ")";
+    }
+    function renderDiceHistory() {
+      diceHistoryList.innerHTML = "";
+      for (let i = diceHistory.length - 1; i >= 0; i--) {
+        const entry = diceHistory[i];
+        const row = document.createElement("div");
+        row.className = "list-row" + (entry.id === diceRevealedId ? " revealed" : "");
+        const main = document.createElement("div");
+        main.className = "row-main";
+        const title = document.createElement("div");
+        title.className = "row-title";
+        title.textContent = entry.label + " = " + entry.finalTotal;
+        const sub = document.createElement("div");
+        sub.className = "row-sub";
+        sub.textContent = entry.rollsA.join(", ") + (entry.rollsB ? " vs " + entry.rollsB.join(", ") + " (kept " + entry.kept + ")" : "");
+        main.appendChild(title);
+        main.appendChild(sub);
+        const revealBtn = document.createElement("button");
+        revealBtn.textContent = entry.id === diceRevealedId ? "Hide" : "Show on display";
+        revealBtn.addEventListener("click", () => {
+          diceRevealedId = diceRevealedId === entry.id ? null : entry.id;
+          if (diceRevealedId !== null) dicePoolRevealed = false;
+          renderDiceHistory();
+          renderDicePool();
+          updateDisplayExtras();
+          scheduleAutosave();
+        });
+        row.appendChild(main);
+        row.appendChild(revealBtn);
+        diceHistoryList.appendChild(row);
+      }
+    }
+    function rollIntoPool(sides) {
+      const value = 1 + Math.floor(Math.random() * sides);
+      dicePool.push({ id: nextPoolId++, sides, value });
+      renderDicePool();
+      if (dicePoolRevealed) updateDisplayExtras();
+      scheduleAutosave();
+    }
+    function renderDicePool() {
+      dicePoolRow.innerHTML = "";
+      dicePool.forEach((entry) => {
+        const pill = document.createElement("span");
+        pill.className = "hp-log-pill";
+        const text = document.createElement("span");
+        text.textContent = "d" + entry.sides + ":" + entry.value;
+        const del = document.createElement("button");
+        del.textContent = "\xD7";
+        del.title = "Remove this roll";
+        del.addEventListener("click", () => {
+          dicePool = dicePool.filter((e) => e.id !== entry.id);
+          renderDicePool();
+          if (dicePoolRevealed) updateDisplayExtras();
+          scheduleAutosave();
+        });
+        pill.appendChild(text);
+        pill.appendChild(del);
+        dicePoolRow.appendChild(pill);
+      });
+      const total = dicePool.reduce((sum, e) => sum + e.value, 0);
+      dicePoolTotal.textContent = dicePool.length ? total : "\u2014";
+      revealPoolBtn.textContent = dicePoolRevealed ? "Hide pool" : "Show pool on display";
+    }
+    clearPoolBtn.addEventListener("click", () => {
+      dicePool = [];
+      renderDicePool();
+      if (dicePoolRevealed) updateDisplayExtras();
+      scheduleAutosave();
+    });
+    revealPoolBtn.addEventListener("click", () => {
+      dicePoolRevealed = !dicePoolRevealed;
+      if (dicePoolRevealed) {
+        diceRevealedId = null;
+        renderDiceHistory();
+      }
+      renderDicePool();
+      updateDisplayExtras();
+      scheduleAutosave();
+    });
+    rollDiceBtn.addEventListener("click", performDiceRoll);
+    diceAdvBtn.addEventListener("click", () => {
+      diceAdvMode = "adv";
+      [diceAdvBtn, diceNormalBtn, diceDisBtn].forEach((b) => b.classList.remove("active"));
+      diceAdvBtn.classList.add("active");
+    });
+    diceNormalBtn.addEventListener("click", () => {
+      diceAdvMode = "normal";
+      [diceAdvBtn, diceNormalBtn, diceDisBtn].forEach((b) => b.classList.remove("active"));
+      diceNormalBtn.classList.add("active");
+    });
+    diceDisBtn.addEventListener("click", () => {
+      diceAdvMode = "dis";
+      [diceAdvBtn, diceNormalBtn, diceDisBtn].forEach((b) => b.classList.remove("active"));
+      diceDisBtn.classList.add("active");
+    });
+    function sortedCombatants() {
+      return sortCombatants(initiative.combatants);
+    }
+    function effectiveCurrentId() {
+      if (initiative.currentCombatantId !== null) return initiative.currentCombatantId;
+      const sorted = sortedCombatants();
+      return sorted.length ? sorted[0].id : null;
+    }
+    function parseHpEntry(rawValue) {
+      const trimmed = rawValue.trim();
+      if (trimmed === "") return null;
+      if (/^[+-]\d+$/.test(trimmed)) {
+        return { id: nextHpLogId++, type: "delta", value: parseInt(trimmed, 10), raw: trimmed };
+      }
+      const val = parseInt(trimmed, 10);
+      if (!isFinite(val)) return null;
+      return { id: nextHpLogId++, type: "set", value: val, raw: trimmed };
+    }
+    function computeHp(combatant) {
+      return computeHitPoints(combatant);
+    }
+    let expandedHpLogIds = /* @__PURE__ */ new Set();
+    function renderInitiative() {
+      roundLabel.textContent = initiative.round;
+      initiativeShowOnDisplay.checked = initiative.showOnDisplay;
+      const currentId = effectiveCurrentId();
+      combatantList.innerHTML = "";
+      sortedCombatants().forEach((c) => {
+        const row = document.createElement("div");
+        row.className = "combatant-row" + (c.id === currentId ? " current-turn" : "");
+        const top = document.createElement("div");
+        top.className = "combatant-top";
+        const main = document.createElement("div");
+        main.className = "row-main";
+        const title = document.createElement("div");
+        title.className = "row-title";
+        title.textContent = (c.id === currentId ? "\u25B6 " : "") + c.name;
+        const sub = document.createElement("div");
+        sub.className = "row-sub";
+        sub.textContent = "Initiative " + c.score;
+        main.appendChild(title);
+        main.appendChild(sub);
+        const removeBtn = document.createElement("button");
+        removeBtn.textContent = "\u2715";
+        removeBtn.addEventListener("click", () => {
+          initiative.combatants = initiative.combatants.filter((x) => x.id !== c.id);
+          if (initiative.currentCombatantId === c.id) initiative.currentCombatantId = null;
+          renderInitiative();
+          updateDisplayExtras();
+          scheduleAutosave();
+        });
+        top.appendChild(main);
+        top.appendChild(removeBtn);
+        const stats = document.createElement("div");
+        stats.className = "combatant-stats";
+        const acLabel = document.createElement("span");
+        acLabel.textContent = "AC";
+        const acInput = document.createElement("input");
+        acInput.type = "number";
+        acInput.placeholder = "\u2014";
+        acInput.value = typeof c.ac === "number" ? c.ac : "";
+        const commitAc = () => {
+          const val = parseInt(acInput.value, 10);
+          c.ac = isFinite(val) ? val : null;
+          scheduleAutosave();
+        };
+        acInput.addEventListener("change", commitAc);
+        const hpLabel = document.createElement("span");
+        hpLabel.textContent = "HP";
+        const hpReadout = document.createElement("span");
+        hpReadout.className = "hp-readout";
+        const currentHp = computeHp(c);
+        hpReadout.textContent = currentHp === null ? "\u2014" : currentHp;
+        const logCount = (c.hpLog || []).length;
+        const expandBtn = document.createElement("button");
+        expandBtn.textContent = expandedHpLogIds.has(c.id) ? "\u25B4" : "\u25BE" + (logCount ? " " + logCount : "");
+        expandBtn.title = "Show/hide the HP log for this combatant";
+        expandBtn.addEventListener("click", () => {
+          if (expandedHpLogIds.has(c.id)) expandedHpLogIds.delete(c.id);
+          else expandedHpLogIds.add(c.id);
+          renderInitiative();
+        });
+        const hpInput = document.createElement("input");
+        hpInput.type = "text";
+        hpInput.placeholder = "+/- or set";
+        const commitHp = () => {
+          const entry = parseHpEntry(hpInput.value);
+          if (entry) {
+            c.hpLog = c.hpLog || [];
+            c.hpLog.push(entry);
+            hpInput.value = "";
+            expandedHpLogIds.add(c.id);
+            renderInitiative();
+            updateDisplayExtras();
+            scheduleAutosave();
+          }
+        };
+        hpInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitHp();
+            hpInput.blur();
+          }
+        });
+        hpInput.addEventListener("blur", commitHp);
+        stats.appendChild(acLabel);
+        stats.appendChild(acInput);
+        stats.appendChild(hpLabel);
+        stats.appendChild(hpReadout);
+        stats.appendChild(expandBtn);
+        stats.appendChild(hpInput);
+        row.appendChild(top);
+        row.appendChild(stats);
+        if (expandedHpLogIds.has(c.id) && logCount) {
+          const logRow = document.createElement("div");
+          logRow.className = "hp-log-row";
+          c.hpLog.forEach((entry) => {
+            const pill = document.createElement("span");
+            pill.className = "hp-log-pill";
+            const text = document.createElement("span");
+            text.textContent = entry.raw;
+            const del = document.createElement("button");
+            del.textContent = "\xD7";
+            del.title = "Remove this entry";
+            del.addEventListener("click", () => {
+              c.hpLog = c.hpLog.filter((e) => e.id !== entry.id);
+              renderInitiative();
+              updateDisplayExtras();
+              scheduleAutosave();
+            });
+            pill.appendChild(text);
+            pill.appendChild(del);
+            logRow.appendChild(pill);
+          });
+          row.appendChild(logRow);
+        }
+        combatantList.appendChild(row);
+      });
+    }
+    addCombatantBtn.addEventListener("click", () => {
+      const name = combatantNameEl.value.trim();
+      const score = parseInt(combatantScoreEl.value, 10);
+      if (!name || !isFinite(score)) return;
+      initiative.combatants.push({ id: nextCombatantId++, name, score, ac: null, hpLog: [] });
+      combatantNameEl.value = "";
+      combatantScoreEl.value = "";
+      renderInitiative();
+      updateDisplayExtras();
+      scheduleAutosave();
+    });
+    nextTurnBtn.addEventListener("click", () => {
+      const sorted = sortedCombatants();
+      if (sorted.length === 0) return;
+      const idx = sorted.findIndex((c) => c.id === effectiveCurrentId());
+      let nextIdx = idx + 1;
+      if (nextIdx >= sorted.length) {
+        nextIdx = 0;
+        initiative.round++;
+      }
+      initiative.currentCombatantId = sorted[nextIdx].id;
+      renderInitiative();
+      updateDisplayExtras();
+      scheduleAutosave();
+    });
+    resetInitiativeBtn.addEventListener("click", () => {
+      if (initiative.combatants.length > 0 && !confirm("Clear all combatants and start a new encounter?")) return;
+      initiative = { combatants: [], currentCombatantId: null, round: 1, showOnDisplay: initiative.showOnDisplay };
+      renderInitiative();
+      updateDisplayExtras();
+      scheduleAutosave();
+    });
+    initiativeShowOnDisplay.addEventListener("change", () => {
+      initiative.showOnDisplay = initiativeShowOnDisplay.checked;
+      updateDisplayExtras();
+      scheduleAutosave();
+    });
+    function updateDisplayExtras() {
+      const displayWindow = displayWindowManager == null ? void 0 : displayWindowManager.getWindow();
+      if (!displayWindow || displayWindow.closed) return;
+      try {
+        const banner = displayWindow.document.getElementById("rollBanner");
+        if (banner) {
+          const entry = diceRevealedId !== null ? diceHistory.find((d) => d.id === diceRevealedId) : null;
+          if (entry) {
+            banner.textContent = entry.label + " = " + entry.finalTotal;
+            banner.style.display = "block";
+          } else if (dicePoolRevealed && dicePool.length > 0) {
+            const total = dicePool.reduce((sum, e) => sum + e.value, 0);
+            banner.textContent = dicePool.map((e) => "d" + e.sides + ":" + e.value).join(", ") + " = " + total;
+            banner.style.display = "block";
+          } else {
+            banner.style.display = "none";
+          }
+        }
+        const panel = displayWindow.document.getElementById("initiativePanel");
+        if (panel) {
+          if (initiative.showOnDisplay && initiative.combatants.length > 0) {
+            const sorted = sortedCombatants();
+            const currentId = effectiveCurrentId();
+            let html = '<div class="init-round">Round ' + initiative.round + "</div>";
+            sorted.forEach((c) => {
+              const isCurrent = c.id === currentId;
+              html += '<div class="init-row' + (isCurrent ? " init-current" : "") + '"><span>' + (isCurrent ? "\u25B6 " : "") + escapeHtml(c.name) + "</span><span>" + c.score + "</span></div>";
+            });
+            panel.innerHTML = html;
+            panel.style.display = "block";
+          } else {
+            panel.style.display = "none";
+          }
+        }
+      } catch (err) {
+      }
+    }
+    window.__updateDisplayExtras = updateDisplayExtras;
+    gridEnabledEl.addEventListener("change", () => {
+      const s = cs();
+      if (!s) {
+        gridEnabledEl.checked = false;
+        return;
+      }
+      s.grid.enabled = gridEnabledEl.checked;
+      pushGridUndo(s);
+      updateCalibrationUI();
+      redraw();
+    });
+    gridColorEl.addEventListener("input", () => {
+      gridColor = gridColorEl.value;
+      redraw();
+    });
+    gridSizeEl.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      s.grid.size = parseInt(gridSizeEl.value, 10);
+      gridSizeLabel.textContent = s.grid.size + "px";
+      if (s.grid.enabled) updateCalibrationUI();
+      redraw();
+    });
+    gridSizeEl.addEventListener("change", () => {
+      const s = cs();
+      if (s) pushGridUndo(s);
+    });
+    gridSizeLabel.textContent = gridSizeEl.value + "px";
+    gridOffsetXEl.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      s.grid.offsetX = parseInt(gridOffsetXEl.value, 10);
+      gridOffsetXLabel.textContent = s.grid.offsetX + "px";
+      redraw();
+    });
+    gridOffsetXEl.addEventListener("change", () => {
+      const s = cs();
+      if (s) pushGridUndo(s);
+    });
+    gridOffsetYEl.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      s.grid.offsetY = parseInt(gridOffsetYEl.value, 10);
+      gridOffsetYLabel.textContent = s.grid.offsetY + "px";
+      redraw();
+    });
+    gridOffsetYEl.addEventListener("change", () => {
+      const s = cs();
+      if (s) pushGridUndo(s);
+    });
+    gridOffsetXLabel.textContent = gridOffsetXEl.value + "px";
+    gridOffsetYLabel.textContent = gridOffsetYEl.value + "px";
+    gridOpacityEl.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      s.grid.opacity = parseInt(gridOpacityEl.value, 10) / 100;
+      gridOpacityLabel.textContent = gridOpacityEl.value + "%";
+      redraw();
+    });
+    gridOpacityEl.addEventListener("change", () => {
+      const s = cs();
+      if (s) pushGridUndo(s);
+    });
+    gridOpacityLabel.textContent = gridOpacityEl.value + "%";
+    const autosaveStore = createAutosaveStore();
+    const scheduleAutosave = createAutosaveScheduler({
+      store: autosaveStore,
+      serialize: serializeSession,
+      hasData: () => slides.length > 0
+    });
+    resumeBtn.addEventListener("click", async () => {
+      if (slides.length > 0 && !confirm("Resuming replaces all maps currently loaded, including their fog and markers. Continue?")) {
+        return;
+      }
+      try {
+        const rec = await autosaveStore.read();
+        if (rec && rec.data) await restoreSession(rec.data);
+      } catch (err) {
+        alert("Could not restore the autosaved session.");
+      }
+      resumeBanner.style.display = "none";
+    });
+    discardBtn.addEventListener("click", () => {
+      autosaveStore.remove().catch(() => {
+      });
+      resumeBanner.style.display = "none";
+    });
+    (async function checkForAutosave() {
+      try {
+        const rec = await autosaveStore.read();
+        if (rec && rec.data && Array.isArray(rec.data.slides) && rec.data.slides.length) {
+          const when = new Date(rec.savedAt).toLocaleString();
+          const count = rec.data.slides.length;
+          resumeText.textContent = "Found an autosaved session from " + when + " (" + count + " map" + (count === 1 ? "" : "s") + ").";
+          resumeBanner.style.display = "flex";
+        }
+      } catch (err) {
+      }
+    })();
+    function drawCompositeToCtx(targetCtx, targetW, targetH) {
+      targetCtx.save();
+      targetCtx.fillStyle = "#000000";
+      targetCtx.fillRect(0, 0, targetW, targetH);
+      const s = cs();
+      if (!s) {
+        targetCtx.restore();
+        return;
+      }
+      const cam = s.camera;
+      const scale = Math.min(targetW / cam.w, targetH / cam.h);
+      const dw = cam.w * scale, dh = cam.h * scale;
+      const dx = (targetW - dw) / 2, dy = (targetH - dh) / 2;
+      targetCtx.globalAlpha = 1;
+      targetCtx.drawImage(s.mapCanvas, cam.x, cam.y, cam.w, cam.h, dx, dy, dw, dh);
+      targetCtx.drawImage(s.fogCanvas, cam.x, cam.y, cam.w, cam.h, dx, dy, dw, dh);
+      drawDisplayGrid(targetCtx, s, cam, dx, dy, dw, dh, scale, gridColor);
+      drawDisplayAoe(targetCtx, s, cam, dx, dy, scale, pxPerFoot(s));
+      const calibTransform = (px, py) => [dx + (px - cam.x) * scale, dy + (py - cam.y) * scale];
+      drawCalibLineOnCtx(targetCtx, calibTransform, scale);
+      drawCalibSquareOnCtx(targetCtx, s, calibTransform, scale);
+      targetCtx.restore();
+    }
+    function drawCameraOverlay(s) {
+      ctx.save();
+      ctx.strokeStyle = "#7c9cff";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
+      ctx.strokeRect(s.camera.x, s.camera.y, s.camera.w, s.camera.h);
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#7c9cff";
+      const hs = HANDLE_SIZE;
+      const corners = [
+        [s.camera.x, s.camera.y],
+        [s.camera.x + s.camera.w, s.camera.y],
+        [s.camera.x, s.camera.y + s.camera.h],
+        [s.camera.x + s.camera.w, s.camera.y + s.camera.h]
+      ];
+      corners.forEach(([cx, cy]) => ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs));
+      ctx.restore();
+    }
+    function reapplyZoomLockCalibration(s) {
+      if (!s || s.grid.enabled || !s.aoeZoomLock || !s.aoeZoomLockRefCamW) return;
+      if (calibratingLine || calibShowingSquare) return;
+      const newCal = s.aoeZoomLockRefCalibration * (s.camera.w / s.aoeZoomLockRefCamW);
+      s.aoeCalibration = Math.max(10, Math.min(2e3, newCal));
+      if (appMode === "aoe" && aoeCalibrationEl) {
+        aoeCalibrationEl.value = Math.round(s.aoeCalibration);
+      }
+    }
+    function redraw() {
+      const s = cs();
+      if (!s) return;
+      reapplyZoomLockCalibration(s);
+      ctx.clearRect(0, 0, workCanvas.width, workCanvas.height);
+      ctx.drawImage(s.mapCanvas, 0, 0);
+      ctx.save();
+      ctx.globalAlpha = fogViewOpacity;
+      ctx.drawImage(s.fogCanvas, 0, 0);
+      ctx.restore();
+      drawDungeon(ctx, s.dungeonSegments, dungeonActiveSegmentId);
+      drawControlGrid(ctx, s, gridColor);
+      drawControlAoe(ctx, s, selectedAoeId, pxPerFoot(s));
+      const identityTransform = (px, py) => [px, py];
+      drawCalibLineOnCtx(ctx, identityTransform, 1);
+      drawCalibSquareOnCtx(ctx, s, identityTransform, 1);
+      drawMarkers(ctx, s.markers, selectedMarkerId);
+      if (appMode === "camera") drawCameraOverlay(s);
+      const displayWindow = displayWindowManager == null ? void 0 : displayWindowManager.getWindow();
+      if (displayWindow && !displayWindow.closed) {
+        try {
+          const dc = displayWindow.document.getElementById("displayCanvas");
+          if (dc) drawCompositeToCtx(dc.getContext("2d"), dc.width, dc.height);
+        } catch (err) {
+        }
+      }
+      scheduleAutosave();
+    }
+    window.__fogRedraw = redraw;
+    function canvasCoords(e) {
+      const rect = workCanvas.getBoundingClientRect();
+      const scaleX = workCanvas.width / rect.width;
+      const scaleY = workCanvas.height / rect.height;
+      return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    }
+    function findMarkerNear(s, x, y) {
+      const rect = workCanvas.getBoundingClientRect();
+      const scale = workCanvas.width / rect.width;
+      const threshold = 18 * scale;
+      return s.markers.find((m) => Math.hypot(m.x - x, m.y - y) < threshold);
+    }
+    workCanvas.addEventListener("mousedown", (e) => {
+      const s = cs();
+      if (!s) return;
+      const p = canvasCoords(e);
+      if (appMode === "brush") {
+        drawing = true;
+        lastX = p.x;
+        lastY = p.y;
+        paintFogStroke(s.fogCtx, p.x, p.y, p.x, p.y, parseInt(brushSize.value, 10), fogDir === "reveal", softEdge.checked);
+        redraw();
+        return;
+      }
+      if (appMode === "dungeon") {
+        const hit = hitTestDungeon(s.dungeonSegments, p.x, p.y);
+        let seg = null;
+        if (hit) {
+          dungeonActiveSegmentId = hit.id;
+          seg = hit;
+          syncDungeonInspector(seg);
+        } else if (dungeonActiveSegmentId !== null) {
+          seg = s.dungeonSegments.find((sg) => sg.id === dungeonActiveSegmentId) || null;
+        }
+        if (!seg) {
+          seg = { id: nextDungeonId++, name: "Segment " + (s.dungeonSegments.length + 1), color: dungeonColor, notes: "", strokes: [] };
+          s.dungeonSegments.push(seg);
+          dungeonActiveSegmentId = seg.id;
+          syncDungeonInspector(seg);
+        }
+        const brushSizePx = parseInt(dungeonBrushSizeEl.value, 10);
+        seg.strokes.push({ points: [{ x: p.x, y: p.y }], brushSize: brushSizePx });
+        dungeonPainting = true;
+        renderDungeonSegments();
+        redraw();
+        return;
+      }
+      if (appMode === "markers") {
+        const existing = findMarkerNear(s, p.x, p.y);
+        if (existing) {
+          selectedMarkerId = existing.id;
+          draggingMarker = existing;
+          dragGrabOffset = { dx: p.x - existing.x, dy: p.y - existing.y };
+          redraw();
+        } else if (selectedMarkerId !== null) {
+          selectedMarkerId = null;
+          redraw();
+        } else {
+          const val = prompt('Label for this marker (e.g. "poison dart trap"):', "");
+          if (val === null) return;
+          const marker = { id: nextMarkerId++, x: p.x, y: p.y, color: markerColor, shape: markerShape, label: val.trim() };
+          s.markers.push(marker);
+          selectedMarkerId = marker.id;
+          pushMarkersUndo(s);
+          redraw();
+        }
+        return;
+      }
+      if (appMode === "camera") {
+        const scale = workCanvas.width / workCanvas.getBoundingClientRect().width;
+        cameraDrag = hitTestCamera(s.camera, p.x, p.y, scale, HANDLE_SIZE);
+        if (!cameraDrag) {
+          s.camera.x = clamp(p.x - s.camera.w / 2, 0, s.mapCanvas.width - s.camera.w);
+          s.camera.y = clamp(p.y - s.camera.h / 2, 0, s.mapCanvas.height - s.camera.h);
+          pushCameraUndo(s);
+          redraw();
+        } else {
+          lastX = p.x;
+          lastY = p.y;
+        }
+        return;
+      }
+      if (calibratingLine) {
+        calibLineStart = { x: p.x, y: p.y };
+        calibLineCurrent = { x: p.x, y: p.y };
+        draggingCalibLine = true;
+        redraw();
+        return;
+      }
+      if (appMode === "aoe") {
+        if (selectedAoeId !== null) {
+          const sel = s.aoeShapes.find((a) => a.id === selectedAoeId);
+          if (sel && (sel.type === "square" || sel.type === "cone")) {
+            const handle = rotationHandlePoint(sel, pxPerFoot(s));
+            const rect = workCanvas.getBoundingClientRect();
+            const scale = workCanvas.width / rect.width;
+            if (Math.hypot(p.x - handle.x, p.y - handle.y) < 16 * scale) {
+              rotatingAoe = sel;
+              redraw();
+              return;
+            }
+          }
+        }
+        const existing = hitTestAoe(s, p.x, p.y);
+        if (existing) {
+          selectedAoeId = existing.id;
+          draggingAoe = existing;
+          dragGrabOffsetAoe = { dx: p.x - existing.x, dy: p.y - existing.y };
+          syncAoeInspector(existing);
+          redraw();
+        } else if (selectedAoeId !== null) {
+          selectedAoeId = null;
+          redraw();
+        } else {
+          const shape = { id: nextAoeId++, type: aoeShapeType, x: p.x, y: p.y, ft: aoeFt, rotation: aoeRotationDeg * Math.PI / 180, color: aoeColor, visible: true };
+          s.aoeShapes.push(shape);
+          selectedAoeId = shape.id;
+          pushAoeUndo(s);
+          redraw();
+        }
+        return;
+      }
+    });
+    workCanvas.addEventListener("contextmenu", (e) => {
+      const s = cs();
+      if (!s || appMode !== "markers" && appMode !== "aoe") return;
+      e.preventDefault();
+      const p = canvasCoords(e);
+      if (appMode === "markers") {
+        const existing = findMarkerNear(s, p.x, p.y);
+        if (existing) {
+          s.markers = s.markers.filter((m) => m !== existing);
+          if (selectedMarkerId === existing.id) selectedMarkerId = null;
+          pushMarkersUndo(s);
+          redraw();
+        }
+      } else if (appMode === "aoe") {
+        const existing = hitTestAoe(s, p.x, p.y);
+        if (existing) {
+          s.aoeShapes = s.aoeShapes.filter((a) => a !== existing);
+          if (selectedAoeId === existing.id) selectedAoeId = null;
+          pushAoeUndo(s);
+          redraw();
+        }
+      }
+    });
+    workCanvas.addEventListener("dblclick", (e) => {
+      const s = cs();
+      if (appMode !== "markers" || !s) return;
+      const p = canvasCoords(e);
+      const existing = findMarkerNear(s, p.x, p.y);
+      if (!existing) return;
+      const val = prompt("Edit marker label (clear text to delete):", existing.label);
+      if (val === null) return;
+      if (val.trim() === "") {
+        s.markers = s.markers.filter((m) => m !== existing);
+        if (selectedMarkerId === existing.id) selectedMarkerId = null;
+      } else {
+        existing.label = val.trim();
+      }
+      pushMarkersUndo(s);
+      redraw();
+    });
+    workCanvas.addEventListener("dblclick", (e) => {
+      const s = cs();
+      if (appMode !== "aoe" || !s) return;
+      const p = canvasCoords(e);
+      const existing = hitTestAoe(s, p.x, p.y);
+      if (!existing) return;
+      existing.visible = existing.visible === false ? true : false;
+      if (selectedAoeId === existing.id) aoeVisibleToggle.checked = existing.visible !== false;
+      pushAoeUndo(s);
+      redraw();
+    });
+    window.addEventListener("mousemove", (e) => {
+      const s = cs();
+      if (!s) return;
+      if (appMode === "brush" && drawing) {
+        const p = canvasCoords(e);
+        paintFogStroke(s.fogCtx, lastX, lastY, p.x, p.y, parseInt(brushSize.value, 10), fogDir === "reveal", softEdge.checked);
+        lastX = p.x;
+        lastY = p.y;
+        redraw();
+        return;
+      }
+      if (appMode === "dungeon" && dungeonPainting) {
+        const p = canvasCoords(e);
+        const seg = s.dungeonSegments.find((sg) => sg.id === dungeonActiveSegmentId);
+        if (seg && seg.strokes.length) {
+          seg.strokes[seg.strokes.length - 1].points.push({ x: p.x, y: p.y });
+          redraw();
+        }
+        return;
+      }
+      if (appMode === "markers" && draggingMarker) {
+        const p = canvasCoords(e);
+        draggingMarker.x = p.x - dragGrabOffset.dx;
+        draggingMarker.y = p.y - dragGrabOffset.dy;
+        redraw();
+        return;
+      }
+      if (appMode === "camera" && cameraDrag) {
+        const p = canvasCoords(e);
+        applyCameraDrag(s.camera, s.mapCanvas.width, s.mapCanvas.height, cameraDrag, p.x - lastX, p.y - lastY);
+        lastX = p.x;
+        lastY = p.y;
+        workCanvas.style.cursor = cameraCursorFor(cameraDrag);
+        redraw();
+        return;
+      }
+      if (appMode === "camera" && !cameraDrag) {
+        const p = canvasCoords(e);
+        const scale = workCanvas.width / workCanvas.getBoundingClientRect().width;
+        workCanvas.style.cursor = cameraCursorFor(hitTestCamera(s.camera, p.x, p.y, scale, HANDLE_SIZE));
+      }
+      if (appMode === "aoe" && draggingAoe) {
+        const p = canvasCoords(e);
+        draggingAoe.x = p.x - dragGrabOffsetAoe.dx;
+        draggingAoe.y = p.y - dragGrabOffsetAoe.dy;
+        redraw();
+        return;
+      }
+      if (draggingCalibLine) {
+        const p = canvasCoords(e);
+        calibLineCurrent = { x: p.x, y: p.y };
+        const lengthMapPx = Math.hypot(calibLineCurrent.x - calibLineStart.x, calibLineCurrent.y - calibLineStart.y);
+        if (lengthMapPx > 2) {
+          s.aoeCalibration = Math.max(10, Math.min(2e3, lengthMapPx / calibRefFt * 5));
+          aoeCalibrationEl.value = Math.round(s.aoeCalibration);
+        }
+        redraw();
+        return;
+      }
+      if (appMode === "aoe" && rotatingAoe) {
+        const p = canvasCoords(e);
+        const angle = Math.atan2(p.y - rotatingAoe.y, p.x - rotatingAoe.x);
+        rotatingAoe.rotation = angle;
+        const deg = (Math.round(angle * 180 / Math.PI) % 360 + 360) % 360;
+        aoeRotationDeg = deg;
+        aoeRotationEl.value = deg;
+        aoeRotationLabel.textContent = deg + "\xB0";
+        workCanvas.style.cursor = "grabbing";
+        redraw();
+        return;
+      }
+      if (appMode === "aoe" && !draggingAoe && selectedAoeId !== null) {
+        const sel = s.aoeShapes.find((a) => a.id === selectedAoeId);
+        if (sel && (sel.type === "square" || sel.type === "cone")) {
+          const p = canvasCoords(e);
+          const handle = rotationHandlePoint(sel, pxPerFoot(s));
+          const rect = workCanvas.getBoundingClientRect();
+          const scale = workCanvas.width / rect.width;
+          workCanvas.style.cursor = Math.hypot(p.x - handle.x, p.y - handle.y) < 16 * scale ? "grab" : "crosshair";
+        } else {
+          workCanvas.style.cursor = "crosshair";
+        }
+      } else if (appMode === "aoe" && !draggingAoe && !rotatingAoe) {
+        workCanvas.style.cursor = "crosshair";
+      }
+    });
+    window.addEventListener("mouseup", () => {
+      const s = cs();
+      if (drawing && s) {
+        drawing = false;
+        pushUndo(s);
+      }
+      if (dungeonPainting) {
+        dungeonPainting = false;
+        if (s) {
+          pushDungeonUndo(s);
+          scheduleAutosave();
+        }
+      }
+      if (draggingMarker && s) {
+        draggingMarker = null;
+        pushMarkersUndo(s);
+        scheduleAutosave();
+      } else if (draggingMarker) {
+        draggingMarker = null;
+      }
+      if (cameraDrag && s) {
+        pushCameraUndo(s);
+      }
+      cameraDrag = null;
+      if (draggingAoe && s) {
+        draggingAoe = null;
+        pushAoeUndo(s);
+      } else if (draggingAoe) {
+        draggingAoe = null;
+      }
+      if (rotatingAoe && s) {
+        rotatingAoe = null;
+        pushAoeUndo(s);
+        workCanvas.style.cursor = "grab";
+      } else if (rotatingAoe) {
+        rotatingAoe = null;
+        workCanvas.style.cursor = "crosshair";
+      }
+      if (draggingCalibLine) {
+        draggingCalibLine = false;
+        calibratingLine = false;
+        calibLineStart = null;
+        calibLineCurrent = null;
+        calibDrawLineBtn.textContent = "Draw a line to calibrate\u2026";
+        calibDrawLineBtn.classList.remove("primary");
+        if (s) {
+          if (s.aoeZoomLock) reanchorZoomLockReference(s);
+          pushAoeUndo(s);
+        }
+        redraw();
+      }
+    });
+    let cameraWheelUndoTimer = null;
+    workCanvas.addEventListener("wheel", (e) => {
+      const s = cs();
+      if (appMode !== "camera" || !s) return;
+      e.preventDefault();
+      const p = canvasCoords(e);
+      zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, p.x, p.y, Math.exp(e.deltaY * 0.01));
+      redraw();
+      clearTimeout(cameraWheelUndoTimer);
+      cameraWheelUndoTimer = setTimeout(() => pushCameraUndo(s), 500);
+    }, { passive: false });
+    zoomInBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s) return;
+      zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, s.camera.x + s.camera.w / 2, s.camera.y + s.camera.h / 2, 0.8);
+      pushCameraUndo(s);
+      redraw();
+    });
+    zoomOutBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s) return;
+      zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, s.camera.x + s.camera.w / 2, s.camera.y + s.camera.h / 2, 1.25);
+      pushCameraUndo(s);
+      redraw();
+    });
+    fitFullBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s) return;
+      s.camera = { x: 0, y: 0, w: s.mapCanvas.width, h: s.mapCanvas.height };
+      pushCameraUndo(s);
+      redraw();
+    });
+    function setAppMode(newMode) {
+      appMode = newMode;
+      if (newMode !== "markers") {
+        selectedMarkerId = null;
+        draggingMarker = null;
+      }
+      if (newMode !== "aoe") {
+        selectedAoeId = null;
+        draggingAoe = null;
+        rotatingAoe = null;
+        workCanvas.style.cursor = "";
+      }
+      if (newMode !== "camera") {
+        workCanvas.style.cursor = "";
+      }
+      if (newMode !== "dungeon") {
+        dungeonPainting = false;
+      }
+      [mapsModeBtn, brushModeBtn, markerModeBtn, cameraModeBtn, gridModeBtn, dungeonModeBtn, calibrateModeBtn, aoeModeBtn, diceModeBtn, initModeBtn].forEach((b) => b.classList.remove("active"));
+      mapsControls.style.display = "none";
+      fogControls.style.display = "none";
+      markerControls.style.display = "none";
+      cameraControls.style.display = "none";
+      gridControls.style.display = "none";
+      dungeonControls.style.display = "none";
+      calibrateControls.style.display = "none";
+      aoeControls.style.display = "none";
+      diceControls.style.display = "none";
+      initiativeControls.style.display = "none";
+      if (newMode === "maps") {
+        mapsModeBtn.classList.add("active");
+        mapsControls.style.display = "flex";
+      }
+      if (newMode === "brush") {
+        brushModeBtn.classList.add("active");
+        fogControls.style.display = "flex";
+      }
+      if (newMode === "markers") {
+        markerModeBtn.classList.add("active");
+        markerControls.style.display = "flex";
+      }
+      if (newMode === "camera") {
+        cameraModeBtn.classList.add("active");
+        cameraControls.style.display = "flex";
+      }
+      if (newMode === "grid") {
+        gridModeBtn.classList.add("active");
+        gridControls.style.display = "flex";
+      }
+      if (newMode === "dungeon") {
+        dungeonModeBtn.classList.add("active");
+        dungeonControls.style.display = "flex";
+        renderDungeonSegments();
+      }
+      if (newMode === "calibrate") {
+        calibrateModeBtn.classList.add("active");
+        calibrateControls.style.display = "flex";
+        updateCalibrationUI();
+      }
+      if (newMode === "aoe") {
+        aoeModeBtn.classList.add("active");
+        aoeControls.style.display = "flex";
+        updateCalibrationUI();
+      }
+      if (newMode === "dice") {
+        diceModeBtn.classList.add("active");
+        diceControls.style.display = "flex";
+      }
+      if (newMode === "init") {
+        initModeBtn.classList.add("active");
+        initiativeControls.style.display = "flex";
+        renderInitiative();
+      }
+      const labels = { brush: "Undo (Fog)", markers: "Undo (Markers)", camera: "Undo (Camera)", grid: "Undo (Grid)", dungeon: "Undo (Dungeon)", aoe: "Undo (AoE)", calibrate: "Undo (AoE)" };
+      const undoApplies = newMode in labels;
+      undoContextLabel.textContent = undoApplies ? labels[newMode] : "Undo";
+      undoBtn.disabled = !undoApplies;
+      undoBtn.style.opacity = undoApplies ? "1" : "0.4";
+      undoBtn.style.cursor = undoApplies ? "pointer" : "not-allowed";
+      const cat = TAB_CATEGORY[newMode];
+      [catMapBtn, catDisplayBtn, catToolsBtn].forEach((b) => b.classList.remove("active"));
+      subTabsMap.style.display = "none";
+      subTabsDisplay.style.display = "none";
+      subTabsTools.style.display = "none";
+      if (cat) {
+        lastActiveInCategory[cat] = newMode;
+        if (cat === "map") {
+          catMapBtn.classList.add("active");
+          subTabsMap.style.display = "flex";
+        }
+        if (cat === "display") {
+          catDisplayBtn.classList.add("active");
+          subTabsDisplay.style.display = "flex";
+        }
+        if (cat === "tools") {
+          catToolsBtn.classList.add("active");
+          subTabsTools.style.display = "flex";
+        }
+      }
+      redraw();
+    }
+    catMapBtn.addEventListener("click", () => setAppMode(lastActiveInCategory.map));
+    catDisplayBtn.addEventListener("click", () => setAppMode(lastActiveInCategory.display));
+    catToolsBtn.addEventListener("click", () => setAppMode(lastActiveInCategory.tools));
+    mapsModeBtn.addEventListener("click", () => setAppMode("maps"));
+    brushModeBtn.addEventListener("click", () => setAppMode("brush"));
+    markerModeBtn.addEventListener("click", () => setAppMode("markers"));
+    cameraModeBtn.addEventListener("click", () => setAppMode("camera"));
+    gridModeBtn.addEventListener("click", () => setAppMode("grid"));
+    dungeonModeBtn.addEventListener("click", () => setAppMode("dungeon"));
+    calibrateModeBtn.addEventListener("click", () => setAppMode("calibrate"));
+    aoeModeBtn.addEventListener("click", () => setAppMode("aoe"));
+    diceModeBtn.addEventListener("click", () => setAppMode("dice"));
+    initModeBtn.addEventListener("click", () => setAppMode("init"));
+    function pushUndo(s) {
+      pushBounded(s.undoStack, snapshotFog(s), UNDO_LIMIT);
+    }
+    function pushMarkersUndo(s) {
+      pushBounded(s.markersUndoStack, cloneValue(s.markers), UNDO_LIMIT);
+    }
+    function pushCameraUndo(s) {
+      pushBounded(s.cameraUndoStack, snapshotCamera(s.camera), UNDO_LIMIT);
+    }
+    function pushGridUndo(s) {
+      pushBounded(s.gridUndoStack, snapshotGrid(s.grid), UNDO_LIMIT);
+    }
+    function pushAoeUndo(s) {
+      pushBounded(s.aoeUndoStack, snapshotAoe(s), UNDO_LIMIT);
+    }
+    function undoFog(s) {
+      if (s.undoStack.length <= 1) return;
+      s.undoStack.pop();
+      const prev = s.undoStack[s.undoStack.length - 1];
+      s.fogCtx.clearRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
+      s.fogCtx.globalCompositeOperation = "source-over";
+      s.fogCtx.drawImage(prev, 0, 0);
+      redraw();
+    }
+    function undoMarkers(s) {
+      if (s.markersUndoStack.length <= 1) return;
+      s.markersUndoStack.pop();
+      const prev = s.markersUndoStack[s.markersUndoStack.length - 1];
+      s.markers = cloneValue(prev);
+      selectedMarkerId = null;
+      draggingMarker = null;
+      redraw();
+    }
+    function undoCamera(s) {
+      if (s.cameraUndoStack.length <= 1) return;
+      s.cameraUndoStack.pop();
+      const prev = s.cameraUndoStack[s.cameraUndoStack.length - 1];
+      s.camera = { x: prev.x, y: prev.y, w: prev.w, h: prev.h };
+      redraw();
+    }
+    function undoGrid(s) {
+      if (s.gridUndoStack.length <= 1) return;
+      s.gridUndoStack.pop();
+      const prev = s.gridUndoStack[s.gridUndoStack.length - 1];
+      s.grid.enabled = prev.enabled;
+      s.grid.size = prev.size;
+      s.grid.offsetX = prev.offsetX;
+      s.grid.offsetY = prev.offsetY;
+      s.grid.opacity = prev.opacity;
+      gridEnabledEl.checked = s.grid.enabled;
+      gridSizeEl.value = s.grid.size;
+      gridSizeLabel.textContent = s.grid.size + "px";
+      gridOffsetXEl.value = s.grid.offsetX;
+      gridOffsetXLabel.textContent = s.grid.offsetX + "px";
+      gridOffsetYEl.value = s.grid.offsetY;
+      gridOffsetYLabel.textContent = s.grid.offsetY + "px";
+      gridOpacityEl.value = Math.round(s.grid.opacity * 100);
+      gridOpacityLabel.textContent = gridOpacityEl.value + "%";
+      updateCalibrationUI();
+      redraw();
+    }
+    function undoAoe(s) {
+      if (s.aoeUndoStack.length <= 1) return;
+      s.aoeUndoStack.pop();
+      const prev = s.aoeUndoStack[s.aoeUndoStack.length - 1];
+      s.aoeShapes = cloneValue(prev.shapes);
+      s.aoeCalibration = prev.calibration;
+      s.aoeZoomLock = !!prev.zoomLock;
+      s.aoeZoomLockRefCalibration = prev.zoomLockRefCalibration;
+      s.aoeZoomLockRefCamW = prev.zoomLockRefCamW;
+      s.aoeZoomLockRefCamera = prev.zoomLockRefCamera ? { ...prev.zoomLockRefCamera } : null;
+      selectedAoeId = null;
+      draggingAoe = null;
+      updateCalibrationUI();
+      redraw();
+    }
+    function pushDungeonUndo(s) {
+      pushBounded(s.dungeonUndoStack, cloneValue(s.dungeonSegments), UNDO_LIMIT);
+    }
+    function undoDungeon(s) {
+      if (s.dungeonUndoStack.length <= 1) return;
+      s.dungeonUndoStack.pop();
+      const prev = s.dungeonUndoStack[s.dungeonUndoStack.length - 1];
+      s.dungeonSegments = cloneValue(prev);
+      dungeonActiveSegmentId = null;
+      dungeonNotesPanel.style.display = "none";
+      renderDungeonSegments();
+      redraw();
+    }
+    function performUndo() {
+      const s = cs();
+      if (!s) return;
+      if (appMode === "brush") undoFog(s);
+      else if (appMode === "markers") undoMarkers(s);
+      else if (appMode === "camera") undoCamera(s);
+      else if (appMode === "grid") undoGrid(s);
+      else if (appMode === "dungeon") undoDungeon(s);
+      else if (appMode === "aoe" || appMode === "calibrate") undoAoe(s);
+    }
+    undoBtn.addEventListener("click", performUndo);
+    window.addEventListener("keydown", (e) => {
+      const activeTag = document.activeElement && document.activeElement.tagName;
+      const isEditableField = activeTag === "INPUT" || activeTag === "TEXTAREA" || document.activeElement && document.activeElement.isContentEditable;
+      if (isEditableField) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        performUndo();
+        return;
+      }
+      if (e.key === "Escape") {
+        if (appMode === "markers" && selectedMarkerId !== null) {
+          selectedMarkerId = null;
+          draggingMarker = null;
+          redraw();
+        }
+        if (appMode === "aoe" && selectedAoeId !== null) {
+          selectedAoeId = null;
+          draggingAoe = null;
+          redraw();
+        }
+        if (appMode === "dungeon" && dungeonActiveSegmentId !== null) {
+          dungeonActiveSegmentId = null;
+          dungeonNotesPanel.style.display = "none";
+          renderDungeonSegments();
+          redraw();
+        }
+        if (calibratingLine) {
+          calibratingLine = false;
+          draggingCalibLine = false;
+          calibLineStart = null;
+          calibLineCurrent = null;
+          calibDrawLineBtn.textContent = "Draw a line to calibrate\u2026";
+          calibDrawLineBtn.classList.remove("primary");
+          redraw();
+        }
+        return;
+      }
+      if (appMode === "markers" && (e.key === "Delete" || e.key === "Backspace")) {
+        e.preventDefault();
+        const s = cs();
+        if (s && selectedMarkerId !== null) {
+          s.markers = s.markers.filter((m) => m.id !== selectedMarkerId);
+          selectedMarkerId = null;
+          pushMarkersUndo(s);
+          redraw();
+        }
+      }
+      if (appMode === "aoe" && (e.key === "Delete" || e.key === "Backspace")) {
+        e.preventDefault();
+        const s = cs();
+        if (s && selectedAoeId !== null) {
+          s.aoeShapes = s.aoeShapes.filter((a) => a.id !== selectedAoeId);
+          selectedAoeId = null;
+          pushAoeUndo(s);
+          redraw();
+        }
+      }
+      if (appMode === "dungeon" && (e.key === "Delete" || e.key === "Backspace") && dungeonActiveSegmentId !== null) {
+        e.preventDefault();
+        deleteDungeonSegment();
+      }
+    });
+    deleteSelectedMarkerBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s || selectedMarkerId === null) return;
+      s.markers = s.markers.filter((m) => m.id !== selectedMarkerId);
+      selectedMarkerId = null;
+      pushMarkersUndo(s);
+      redraw();
+    });
+    function setAoeShapeType(type) {
+      aoeShapeType = type;
+      [aoeCircleBtn, aoeSquareBtn, aoeConeBtn].forEach((b) => b.classList.remove("active"));
+      ({ circle: aoeCircleBtn, square: aoeSquareBtn, cone: aoeConeBtn })[type].classList.add("active");
+      aoeFtLabel.textContent = type === "circle" ? "Radius (ft)" : type === "square" ? "Side length (ft)" : "Length (ft)";
+      const s = cs();
+      const shape = s && selectedAoeId !== null ? s.aoeShapes.find((a) => a.id === selectedAoeId) : null;
+      if (shape) {
+        shape.type = type;
+        pushAoeUndo(s);
+        redraw();
+      }
+    }
+    aoeCircleBtn.addEventListener("click", () => setAoeShapeType("circle"));
+    aoeSquareBtn.addEventListener("click", () => setAoeShapeType("square"));
+    aoeConeBtn.addEventListener("click", () => setAoeShapeType("cone"));
+    aoeFtEl.addEventListener("input", () => {
+      const val = parseFloat(aoeFtEl.value);
+      if (!isFinite(val) || val <= 0) return;
+      aoeFt = val;
+      const s = cs();
+      const shape = s && selectedAoeId !== null ? s.aoeShapes.find((a) => a.id === selectedAoeId) : null;
+      if (shape) {
+        shape.ft = val;
+        redraw();
+      }
+    });
+    aoeFtEl.addEventListener("change", () => {
+      const s = cs();
+      if (s && selectedAoeId !== null) pushAoeUndo(s);
+    });
+    aoeRotationEl.addEventListener("input", () => {
+      const deg = parseInt(aoeRotationEl.value, 10);
+      aoeRotationDeg = deg;
+      aoeRotationLabel.textContent = deg + "\xB0";
+      const s = cs();
+      const shape = s && selectedAoeId !== null ? s.aoeShapes.find((a) => a.id === selectedAoeId) : null;
+      if (shape) {
+        shape.rotation = deg * Math.PI / 180;
+        redraw();
+      }
+    });
+    aoeRotationEl.addEventListener("change", () => {
+      const s = cs();
+      if (s && selectedAoeId !== null) pushAoeUndo(s);
+    });
+    aoeRotationLabel.textContent = aoeRotationEl.value + "\xB0";
+    aoeCalibrationEl.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      const val = parseFloat(aoeCalibrationEl.value);
+      if (!isFinite(val) || val <= 0) return;
+      s.aoeCalibration = val;
+      redraw();
+    });
+    aoeCalibrationEl.addEventListener("change", () => {
+      const s = cs();
+      if (!s) return;
+      if (s.aoeZoomLock) reanchorZoomLockReference(s);
+      pushAoeUndo(s);
+    });
+    function reanchorZoomLockReference(s) {
+      s.aoeZoomLockRefCalibration = s.aoeCalibration;
+      s.aoeZoomLockRefCamW = s.camera.w;
+      s.aoeZoomLockRefCamera = { ...s.camera };
+    }
+    [...calibRefLenButtons.children].forEach((b) => {
+      b.addEventListener("click", () => {
+        calibRefFt = parseInt(b.dataset.ft, 10);
+        [...calibRefLenButtons.children].forEach((ch) => ch.classList.remove("active"));
+        b.classList.add("active");
+        calibCustomFt.value = "";
+        redraw();
+      });
+    });
+    calibCustomFt.addEventListener("input", () => {
+      const val = parseFloat(calibCustomFt.value);
+      if (!isFinite(val) || val <= 0) return;
+      calibRefFt = val;
+      [...calibRefLenButtons.children].forEach((ch) => ch.classList.remove("active"));
+      redraw();
+    });
+    calibDrawLineBtn.addEventListener("click", () => {
+      if (calibratingLine) {
+        calibratingLine = false;
+        draggingCalibLine = false;
+        calibLineStart = null;
+        calibLineCurrent = null;
+        calibDrawLineBtn.textContent = "Draw a line to calibrate\u2026";
+        calibDrawLineBtn.classList.remove("primary");
+        redraw();
+        return;
+      }
+      const s = cs();
+      if (!s) return;
+      calibratingLine = true;
+      calibDrawLineBtn.textContent = "Click and drag on the map\u2026 (click to cancel)";
+      calibDrawLineBtn.classList.add("primary");
+    });
+    calibShowSquareBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s) return;
+      calibShowingSquare = !calibShowingSquare;
+      calibShowSquareBtn.textContent = calibShowingSquare ? "Hide reference square" : "Show reference square";
+      calibShowSquareBtn.classList.toggle("primary", calibShowingSquare);
+      updateCalibrationUI();
+      redraw();
+    });
+    aoeZoomLockToggle.addEventListener("change", () => {
+      const s = cs();
+      if (!s) {
+        aoeZoomLockToggle.checked = false;
+        return;
+      }
+      s.aoeZoomLock = aoeZoomLockToggle.checked;
+      if (s.aoeZoomLock) {
+        reanchorZoomLockReference(s);
+        calibSnapZoomBtn.style.display = "block";
+      } else {
+        calibSnapZoomBtn.style.display = "none";
+      }
+      pushAoeUndo(s);
+      updateCalibrationUI();
+      redraw();
+    });
+    calibSnapZoomBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s || !s.aoeZoomLockRefCamera) return;
+      s.camera = { ...s.aoeZoomLockRefCamera };
+      pushCameraUndo(s);
+      redraw();
+    });
+    aoeVisibleToggle.addEventListener("change", () => {
+      const s = cs();
+      const shape = s && selectedAoeId !== null ? s.aoeShapes.find((a) => a.id === selectedAoeId) : null;
+      if (shape) {
+        shape.visible = aoeVisibleToggle.checked;
+        pushAoeUndo(s);
+        redraw();
+      }
+    });
+    deleteSelectedAoeBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s || selectedAoeId === null) return;
+      s.aoeShapes = s.aoeShapes.filter((a) => a.id !== selectedAoeId);
+      selectedAoeId = null;
+      pushAoeUndo(s);
+      redraw();
+    });
+    dungeonBrushSizeEl.addEventListener("input", () => {
+      dungeonBrushSizeLabel.textContent = dungeonBrushSizeEl.value + "px";
+    });
+    dungeonBrushSizeLabel.textContent = dungeonBrushSizeEl.value + "px";
+    dungeonNewSegmentBtn.addEventListener("click", () => {
+      dungeonActiveSegmentId = null;
+      dungeonNotesPanel.style.display = "none";
+      renderDungeonSegments();
+      redraw();
+    });
+    dungeonSegmentName.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      const seg = s.dungeonSegments.find((sg) => sg.id === dungeonActiveSegmentId);
+      if (seg) {
+        seg.name = dungeonSegmentName.value;
+        renderDungeonSegments();
+      }
+    });
+    dungeonSegmentName.addEventListener("change", () => {
+      const s = cs();
+      if (s) pushDungeonUndo(s);
+    });
+    dungeonSegmentNotes.addEventListener("input", () => {
+      const s = cs();
+      if (!s) return;
+      const seg = s.dungeonSegments.find((sg) => sg.id === dungeonActiveSegmentId);
+      if (seg) {
+        seg.notes = dungeonSegmentNotes.value;
+        renderDungeonSegments();
+      }
+    });
+    dungeonSegmentNotes.addEventListener("change", () => {
+      const s = cs();
+      if (s) pushDungeonUndo(s);
+    });
+    function deleteDungeonSegment() {
+      const s = cs();
+      if (!s || dungeonActiveSegmentId === null) return;
+      const seg = s.dungeonSegments.find((sg) => sg.id === dungeonActiveSegmentId);
+      if (!seg) return;
+      if (!confirm('Delete "' + seg.name + '" and its notes? This can only be undone with Ctrl+Z right after.')) return;
+      s.dungeonSegments = s.dungeonSegments.filter((sg) => sg.id !== seg.id);
+      dungeonActiveSegmentId = null;
+      dungeonNotesPanel.style.display = "none";
+      pushDungeonUndo(s);
+      renderDungeonSegments();
+      redraw();
+      scheduleAutosave();
+    }
+    dungeonDeleteSegmentBtn.addEventListener("click", deleteDungeonSegment);
+    resetFogBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s) return;
+      s.fogCtx.globalCompositeOperation = "source-over";
+      s.fogCtx.fillStyle = "#000000";
+      s.fogCtx.fillRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
+      pushUndo(s);
+      redraw();
+    });
+    clearFogBtn.addEventListener("click", () => {
+      const s = cs();
+      if (!s) return;
+      s.fogCtx.clearRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
+      pushUndo(s);
+      redraw();
+    });
+    revealModeBtn.addEventListener("click", () => {
+      fogDir = "reveal";
+      revealModeBtn.classList.add("active");
+      coverModeBtn.classList.remove("active");
+    });
+    coverModeBtn.addEventListener("click", () => {
+      fogDir = "cover";
+      coverModeBtn.classList.add("active");
+      revealModeBtn.classList.remove("active");
+    });
+    function updateBrushLabel() {
+      const size = brushSize.value;
+      brushSizeLabel.textContent = size + "px";
+      const previewSize = Math.min(56, Math.max(8, size / 4));
+      brushDot.style.width = previewSize + "px";
+      brushDot.style.height = previewSize + "px";
+    }
+    brushSize.addEventListener("input", updateBrushLabel);
+    updateBrushLabel();
+    fogOpacity.addEventListener("input", () => {
+      fogViewOpacity = parseInt(fogOpacity.value, 10) / 100;
+      fogOpacityLabel.textContent = fogOpacity.value + "%";
+      redraw();
+    });
+    fogOpacityLabel.textContent = fogOpacity.value + "%";
+    fogViewOpacity = parseInt(fogOpacity.value, 10) / 100;
+    displayWindowManager = createDisplayWindowManager({
+      statusElement: displayStatus,
+      redraw,
+      updateExtras: updateDisplayExtras
+    });
+    openDisplayBtn.addEventListener("click", displayWindowManager.openOrFocus);
+  })();
+})();
+</script>
+</body>
+</html>
