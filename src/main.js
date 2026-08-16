@@ -10,6 +10,7 @@ import {
   snapshotCamera,
   snapshotGrid,
 } from './core/undo.mjs';
+import { constrainedMapSize, MAX_CONTROL_PREVIEW_DIMENSION } from './core/map-limits.mjs';
 import { computeAoeGeometry, rotationHandlePoint } from './features/aoe.mjs';
 import {
   applyCameraDrag,
@@ -18,7 +19,7 @@ import {
   zoomCameraAt,
 } from './features/camera.mjs';
 import { rollDice } from './features/dice.mjs';
-import { hitTestDungeon } from './features/dungeon.mjs';
+import { hitTestDungeon, nextDungeonNumber } from './features/dungeon.mjs';
 import { computeHitPoints, sortCombatants } from './features/initiative.mjs';
 import { createDisplayWindowManager } from './display/window-manager.mjs';
 import {
@@ -27,8 +28,10 @@ import {
   drawDungeon,
   drawDisplayAoe,
   drawDisplayGrid,
+  drawDisplayMarkers,
   drawMarkers as drawCanvasMarkers,
   drawMarkerShape,
+  applyFogAction,
   paintFogStroke,
 } from './renderers/canvas2d.mjs';
 import { createSharedColorPicker } from './ui/color-picker.mjs';
@@ -42,6 +45,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const dimsLabel = document.getElementById('dimsLabel');
   const openDisplayBtn = document.getElementById('openDisplayBtn');
   const displayStatus = document.getElementById('displayStatus');
+  const appStatus = document.getElementById('appStatus');
 
   const slideListEl = document.getElementById('slideList');
   const prevSlideBtn = document.getElementById('prevSlideBtn');
@@ -76,12 +80,15 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const dungeonColorSwatches = document.getElementById('dungeonColorSwatches');
   const dungeonColorSwatchesRecent = document.getElementById('dungeonColorSwatchesRecent');
   const dungeonColorWheel = document.getElementById('dungeonColorWheel');
+  const dungeonPaintToolBtn = document.getElementById('dungeonPaintToolBtn');
+  const dungeonSelectToolBtn = document.getElementById('dungeonSelectToolBtn');
   const dungeonNewSegmentBtn = document.getElementById('dungeonNewSegmentBtn');
   const dungeonNotesPanel = document.getElementById('dungeonNotesPanel');
   const dungeonSegmentName = document.getElementById('dungeonSegmentName');
   const dungeonSegmentNotes = document.getElementById('dungeonSegmentNotes');
   const dungeonDeleteSegmentBtn = document.getElementById('dungeonDeleteSegmentBtn');
   const dungeonSegmentList = document.getElementById('dungeonSegmentList');
+  const dungeonTooltip = document.getElementById('dungeonTooltip');
 
   const revealModeBtn = document.getElementById('revealModeBtn');
   const coverModeBtn = document.getElementById('coverModeBtn');
@@ -98,11 +105,19 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const colorSwatches = document.getElementById('colorSwatches');
   const colorSwatchesRecent = document.getElementById('colorSwatchesRecent');
   const markerColorWheel = document.getElementById('markerColorWheel');
+  const markerVisibleToggle = document.getElementById('markerVisibleToggle');
+  const markerSizeEl = document.getElementById('markerSize');
+  const markerSizeLabel = document.getElementById('markerSizeLabel');
+  const markerNamePanel = document.getElementById('markerNamePanel');
+  const markerNameEl = document.getElementById('markerName');
   const shapeSwatches = document.getElementById('shapeSwatches');
   const deleteSelectedMarkerBtn = document.getElementById('deleteSelectedMarkerBtn');
   const zoomInBtn = document.getElementById('zoomInBtn');
   const zoomOutBtn = document.getElementById('zoomOutBtn');
   const fitFullBtn = document.getElementById('fitFullBtn');
+  const centerCameraBtn = document.getElementById('centerCameraBtn');
+  const cameraZoomEl = document.getElementById('cameraZoom');
+  const cameraZoomLabel = document.getElementById('cameraZoomLabel');
 
   const gridEnabledEl = document.getElementById('gridEnabled');
   const gridColorEl = document.getElementById('gridColor');
@@ -171,25 +186,90 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   const ctx = workCanvas.getContext('2d');
 
+  function announceStatus(message) {
+    appStatus.textContent = '';
+    requestAnimationFrame(() => { appStatus.textContent = message; });
+  }
+
+  function syncSemanticButton(button) {
+    if (!(button instanceof HTMLButtonElement)) return;
+    const active = button.classList.contains('active');
+    if (button.getAttribute('role') === 'tab') button.setAttribute('aria-selected', String(active));
+    if (button.closest('.mode-row') || button.classList.contains('shape-swatch')) {
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  const semanticObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes') syncSemanticButton(mutation.target);
+      mutation.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) return;
+        if (node.matches('button')) syncSemanticButton(node);
+        node.querySelectorAll?.('button').forEach(syncSemanticButton);
+      });
+    });
+  });
+  semanticObserver.observe(document.querySelector('.controls'), { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+  document.querySelectorAll('button').forEach(syncSemanticButton);
+
+  document.querySelectorAll('[role="tablist"]').forEach((tablist) => {
+    tablist.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const tabs = [...tablist.querySelectorAll('[role="tab"]')].filter(tab => !tab.disabled);
+      const current = Math.max(0, tabs.indexOf(document.activeElement));
+      const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? tabs.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      event.preventDefault();
+      tabs[next].focus();
+      tabs[next].click();
+    });
+  });
+
+  document.querySelectorAll('label.file-btn[tabindex="0"]').forEach((label) => {
+    label.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      document.getElementById(label.htmlFor)?.click();
+    });
+  });
+
   // ---------- Sidebar resize ----------
   (function initSidebarResize() {
     const handle = document.getElementById('sidebarResizeHandle');
     const controlsEl = document.querySelector('.controls');
     const MIN_W = 220, MAX_W = 560;
     let dragging = false;
-    handle.addEventListener('mousedown', (e) => {
+    function setWidth(width) {
+      const nextWidth = Math.max(MIN_W, Math.min(MAX_W, width));
+      controlsEl.style.width = nextWidth + 'px';
+      handle.setAttribute('aria-valuenow', String(Math.round(nextWidth)));
+    }
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
       dragging = true;
+      handle.setPointerCapture?.(e.pointerId);
       handle.classList.add('dragging');
       e.preventDefault();
     });
-    window.addEventListener('mousemove', (e) => {
+    window.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const rect = controlsEl.getBoundingClientRect();
-      const newW = Math.max(MIN_W, Math.min(MAX_W, e.clientX - rect.left));
-      controlsEl.style.width = newW + 'px';
+      setWidth(e.clientX - rect.left);
     });
-    window.addEventListener('mouseup', () => {
+    function finishResize() {
       if (dragging) { dragging = false; handle.classList.remove('dragging'); }
+    }
+    window.addEventListener('pointerup', finishResize);
+    window.addEventListener('pointercancel', finishResize);
+    handle.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const current = controlsEl.getBoundingClientRect().width;
+      if (event.key === 'Home') setWidth(MIN_W);
+      else if (event.key === 'End') setWidth(MAX_W);
+      else setWidth(current + (event.key === 'ArrowRight' ? 16 : -16));
     });
   })();
 
@@ -204,6 +284,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   let appMode = 'maps';  // 'maps' | 'brush' | 'markers' | 'camera' | 'grid' | 'aoe' | 'dice' | 'init'
   let fogDir = 'reveal';  // 'reveal' | 'cover'
   let drawing = false;
+  let activeFogAction = null;
   let lastX = 0, lastY = 0;
   const UNDO_LIMIT = 25;
   let fogViewOpacity = 0.55;
@@ -232,6 +313,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
   let markerColor = MARKER_COLORS[0];
   const MARKER_SHAPES = ['x', 'circle', 'square', 'triangle', 'star', 'skull', 'chest'];
   let markerShape = 'x';
+  let markerVisibleDefault = false;
+  let markerSizeDefault = 12;
   let nextMarkerId = 1;
   let selectedMarkerId = null;
   let draggingMarker = null;
@@ -264,6 +347,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   let nextDungeonId = 1;
   let dungeonActiveSegmentId = null;
   let dungeonPainting = false;
+  let dungeonTool = 'paint';
 
   // ---------- Category tab system (Maps standalone; Map/Display/Tools group the rest) ----------
   const TAB_CATEGORY = {
@@ -282,12 +366,15 @@ import { escapeHtml } from './ui/escape-html.mjs';
   setupColorPicker(colorSwatches, colorSwatchesRecent, markerColorWheel, MARKER_COLORS, markerColor, (hex) => {
     markerColor = hex;
     renderShapeSwatchPreviews();
-  });
+  }, 'Marker color');
 
   MARKER_SHAPES.forEach((shape) => {
     const b = document.createElement('button');
     b.className = 'shape-swatch' + (shape === markerShape ? ' active' : '');
     b.dataset.shape = shape;
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Marker shape: ' + shape);
+    b.title = 'Marker shape: ' + shape;
     const c = document.createElement('canvas');
     c.width = 30; c.height = 30;
     b.appendChild(c);
@@ -314,14 +401,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const s = cs();
     const shape = s && selectedAoeId !== null ? s.aoeShapes.find(a => a.id === selectedAoeId) : null;
     if (shape) { shape.color = hex; pushAoeUndo(s); redraw(); }
-  });
+  }, 'AoE color');
 
   setupColorPicker(dungeonColorSwatches, dungeonColorSwatchesRecent, dungeonColorWheel, DUNGEON_COLORS, dungeonColor, (hex) => {
     dungeonColor = hex;
     const s = cs();
     const seg = s && dungeonActiveSegmentId !== null ? s.dungeonSegments.find(sg => sg.id === dungeonActiveSegmentId) : null;
     if (seg) { seg.color = hex; pushDungeonUndo(s); renderDungeonSegments(); redraw(); }
-  });
+  }, 'Dungeon segment color');
 
   DICE_SIDES.forEach((sides) => {
     const b = document.createElement('button');
@@ -339,29 +426,47 @@ import { escapeHtml } from './ui/escape-html.mjs';
   // ---------- Loading images into slides ----------
   function loadImageFromFile(file) {
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
+      const image = new Image();
+      const reader = new FileReader();
+      let imageReady = false;
+      let dataReady = false;
+      let sourceDataUrl = null;
+      const objectUrl = URL.createObjectURL(file);
+      const finish = () => {
+        if (!imageReady || !dataReady) return;
+        URL.revokeObjectURL(objectUrl);
+        resolve({ image, sourceDataUrl });
+      };
+      image.onload = () => { imageReady = true; finish(); };
+      image.onerror = (error) => { URL.revokeObjectURL(objectUrl); reject(error); };
+      reader.onload = () => { sourceDataUrl = reader.result; dataReady = true; finish(); };
+      reader.onerror = () => { URL.revokeObjectURL(objectUrl); reject(reader.error); };
+      image.src = objectUrl;
+      reader.readAsDataURL(file);
     });
   }
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    let imported = 0;
+    let failed = 0;
     for (const f of files) {
       try {
-        const img = await loadImageFromFile(f);
-        addSlideFromImage(img, f.name.replace(/\.[^/.]+$/, ''));
-      } catch (e) { /* skip unreadable file */ }
+        const loaded = await loadImageFromFile(f);
+        addSlideFromImage(loaded.image, f.name.replace(/\.[^/.]+$/, ''), loaded.sourceDataUrl);
+        imported++;
+      } catch (e) {
+        failed++;
+      }
     }
+    if (imported) announceStatus(`Added ${imported} map${imported === 1 ? '' : 's'}.`);
+    if (failed) announceStatus(`${failed} image${failed === 1 ? '' : 's'} could not be read.`);
   }
 
-  function addSlideFromImage(img, name) {
-    const MAX_DIM = 2400;
-    let w = img.naturalWidth, h = img.naturalHeight;
-    const scale = Math.min(1, MAX_DIM / Math.max(w, h));
-    w = Math.round(w * scale);
-    h = Math.round(h * scale);
+  function addSlideFromImage(img, name, sourceDataUrl) {
+    const constrained = constrainedMapSize(img.naturalWidth, img.naturalHeight);
+    const w = constrained.width;
+    const h = constrained.height;
 
     const mapCanvas = document.createElement('canvas');
     mapCanvas.width = w; mapCanvas.height = h;
@@ -381,7 +486,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       id: nextSlideId++,
       name: name || ('Map ' + (slides.length + 1)),
       mapCanvas, fogCanvas, fogCtx,
-      mapDataUrl: mapCanvas.toDataURL('image/jpeg', 0.9),
+      mapDataUrl: constrained.scaled ? mapCanvas.toDataURL('image/jpeg', 0.9) : sourceDataUrl,
       thumb: thumbCanvas.toDataURL('image/jpeg', 0.7),
       markers: [],
       camera: { x: 0, y: 0, w, h },
@@ -393,14 +498,17 @@ import { escapeHtml } from './ui/escape-html.mjs';
       aoeZoomLockRefCamW: null,
       aoeZoomLockRefCamera: null,
       dungeonSegments: [],
-      undoStack: [],
+      fogBaseImage: null,
+      fogActions: [],
+      fogCommittedActions: [],
+      fogDataUrl: null,
+      fogDirty: true,
       markersUndoStack: [],
       cameraUndoStack: [],
       gridUndoStack: [],
       aoeUndoStack: [],
       dungeonUndoStack: []
     };
-    slide.undoStack.push(snapshotFog(slide));
     slide.markersUndoStack.push(cloneValue(slide.markers));
     slide.cameraUndoStack.push(snapshotCamera(slide.camera));
     slide.gridUndoStack.push(snapshotGrid(slide.grid));
@@ -410,14 +518,6 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
     renderSlideList();
     if (currentSlideId === null) selectSlide(slide.id);
-  }
-
-  function snapshotFog(slide) {
-    const snap = document.createElement('canvas');
-    snap.width = slide.fogCanvas.width;
-    snap.height = slide.fogCanvas.height;
-    snap.getContext('2d').drawImage(slide.fogCanvas, 0, 0);
-    return snap;
   }
 
   fileInput.addEventListener('change', (e) => {
@@ -457,7 +557,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       slides: slides.map(s => ({
         name: s.name,
         mapDataUrl: s.mapDataUrl,
-        fogDataUrl: s.fogCanvas.toDataURL('image/png'),
+        fogDataUrl: getFogDataUrl(s),
         thumb: s.thumb,
         markers: s.markers,
         camera: s.camera,
@@ -473,6 +573,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
     };
   }
 
+  function getFogDataUrl(slide) {
+    if (slide.fogDirty || !slide.fogDataUrl) {
+      slide.fogDataUrl = slide.fogCanvas.toDataURL('image/png');
+      slide.fogDirty = false;
+    }
+    return slide.fogDataUrl;
+  }
+
   saveSessionBtn.addEventListener('click', () => {
     if (slides.length === 0) { alert('Nothing to save yet — add a map first.'); return; }
     const data = serializeSession();
@@ -486,6 +594,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    announceStatus('Session saved.');
   });
 
   function loadImageFromDataUrl(url) {
@@ -552,7 +661,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
           y: (typeof m.y === 'number') ? m.y : 0,
           color: m.color || MARKER_COLORS[0],
           shape: MARKER_SHAPES.includes(m.shape) ? m.shape : 'x',
-          label: typeof m.label === 'string' ? m.label : ''
+          label: typeof m.label === 'string' ? m.label : '',
+          visible: m.visible === true,
+          size: (typeof m.size === 'number' && isFinite(m.size)) ? Math.max(6, Math.min(60, m.size)) : 12,
         })) : [],
         camera: safeCamera,
         grid: { enabled: !!rawGrid.enabled, size: safeSize, offsetX: clampOffset(rawGrid.offsetX), offsetY: clampOffset(rawGrid.offsetY), opacity: safeOpacity },
@@ -573,6 +684,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
         aoeZoomLockRefCamera: safeZoomLock ? safeLockCam : null,
         dungeonSegments: Array.isArray(sd.dungeonSegments) ? sd.dungeonSegments.map(seg => ({
           id: nextDungeonId++,
+          number: (typeof seg.number === 'number' && seg.number > 0) ? Math.floor(seg.number) : null,
           name: typeof seg.name === 'string' ? seg.name : 'Segment',
           color: seg.color || DUNGEON_COLORS[0],
           notes: typeof seg.notes === 'string' ? seg.notes : '',
@@ -580,15 +692,18 @@ import { escapeHtml } from './ui/escape-html.mjs';
             brushSize: (typeof st.brushSize === 'number' && st.brushSize > 0 && isFinite(st.brushSize)) ? st.brushSize : 60,
             points: Array.isArray(st.points) ? st.points.filter(pt => pt && typeof pt.x === 'number' && typeof pt.y === 'number' && isFinite(pt.x) && isFinite(pt.y)) : []
           })).filter(st => st.points.length > 0) : []
-        })) : [],
-        undoStack: [],
+        })).map((segment, index) => ({ ...segment, number: segment.number || index + 1 })) : [],
+        fogBaseImage: fogImg,
+        fogActions: [],
+        fogCommittedActions: [],
+        fogDataUrl: sd.fogDataUrl,
+        fogDirty: false,
         markersUndoStack: [],
         cameraUndoStack: [],
         gridUndoStack: [],
         aoeUndoStack: [],
         dungeonUndoStack: []
       };
-      slide.undoStack.push(snapshotFog(slide));
       slide.markersUndoStack.push(cloneValue(slide.markers));
       slide.cameraUndoStack.push(snapshotCamera(slide.camera));
       slide.gridUndoStack.push(snapshotGrid(slide.grid));
@@ -692,12 +807,15 @@ import { escapeHtml } from './ui/escape-html.mjs';
         const data = JSON.parse(reader.result);
         if (!data || !Array.isArray(data.slides)) throw new Error('bad format');
         await restoreSession(data);
+        announceStatus(`Session loaded with ${data.slides.length} map${data.slides.length === 1 ? '' : 's'}.`);
       } catch (err) {
+        announceStatus('Session could not be loaded.');
         alert('Could not read that session file — it may be corrupted or not a valid export from this app.');
       }
       loadSessionInput.value = '';
     };
     reader.onerror = () => {
+      announceStatus('File could not be read.');
       alert('Could not read that file.');
       loadSessionInput.value = '';
     };
@@ -706,6 +824,42 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   // ---------- Slide list UI + reordering ----------
   let draggingId = null;
+
+  function startSlideRename(slide, row, nameElement) {
+    if (row.querySelector('.slide-name-input')) return;
+    row.draggable = false;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'slide-name-input';
+    input.value = slide.name;
+    input.setAttribute('aria-label', 'Map name');
+    nameElement.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    function finish(save) {
+      if (finished) return;
+      finished = true;
+      if (save) {
+        const nextName = input.value.trim();
+        if (nextName) {
+          slide.name = nextName;
+          if (slide.id === currentSlideId) dimsLabel.textContent = slide.name + ' — ' + slide.mapCanvas.width + ' × ' + slide.mapCanvas.height + 'px';
+          scheduleAutosave();
+          announceStatus('Map renamed to ' + slide.name + '.');
+        }
+      }
+      renderSlideList();
+    }
+    input.addEventListener('click', event => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') finish(true);
+      if (event.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+  }
 
   function renderSlideList() {
     slideListEl.innerHTML = '';
@@ -723,17 +877,37 @@ import { escapeHtml } from './ui/escape-html.mjs';
       name.className = 'slide-name';
       name.textContent = s.name;
 
+      const edit = document.createElement('button');
+      edit.className = 'slide-edit';
+      edit.textContent = '✎';
+      edit.title = 'Rename map';
+      edit.setAttribute('aria-label', 'Rename map ' + s.name);
+      edit.addEventListener('click', (event) => {
+        event.stopPropagation();
+        startSlideRename(s, row, name);
+      });
+
       const remove = document.createElement('button');
       remove.className = 'slide-remove';
       remove.textContent = '✕';
       remove.title = 'Remove this map';
+      remove.setAttribute('aria-label', 'Remove map ' + s.name);
       remove.addEventListener('click', (e) => { e.stopPropagation(); removeSlide(s.id); });
 
       row.appendChild(img);
       row.appendChild(name);
+      row.appendChild(edit);
       row.appendChild(remove);
 
       row.addEventListener('click', () => selectSlide(s.id));
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', 'Open map ' + s.name);
+      row.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        selectSlide(s.id);
+      });
 
       row.addEventListener('dragstart', () => { draggingId = s.id; });
       row.addEventListener('dragover', (e) => { e.preventDefault(); row.classList.add('drag-hint'); });
@@ -759,6 +933,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     currentSlideId = id;
     selectedMarkerId = null;
     draggingMarker = null;
+    syncMarkerInspector(null);
     selectedAoeId = null;
     draggingAoe = null;
     rotatingAoe = null;
@@ -774,10 +949,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
     dungeonActiveSegmentId = null;
     dungeonPainting = false;
     dungeonNotesPanel.style.display = 'none';
+    hideDungeonTooltip();
     const s = cs();
     if (!s) return;
-    workCanvas.width = s.mapCanvas.width;
-    workCanvas.height = s.mapCanvas.height;
+    const preview = constrainedMapSize(s.mapCanvas.width, s.mapCanvas.height, MAX_CONTROL_PREVIEW_DIMENSION);
+    workCanvas.width = preview.width;
+    workCanvas.height = preview.height;
+    workCanvas.dataset.mapWidth = s.mapCanvas.width;
+    workCanvas.dataset.mapHeight = s.mapCanvas.height;
     workCanvas.style.display = 'block';
     emptyState.style.display = 'none';
     dimsLabel.textContent = s.name + ' — ' + s.mapCanvas.width + ' × ' + s.mapCanvas.height + 'px';
@@ -962,6 +1141,34 @@ import { escapeHtml } from './ui/escape-html.mjs';
     dungeonColorWheel.value = seg.color;
   }
 
+  function syncMarkerInspector(marker) {
+    markerVisibleToggle.checked = marker ? marker.visible === true : markerVisibleDefault;
+    const size = marker ? marker.size || 12 : markerSizeDefault;
+    markerSizeEl.value = size;
+    markerSizeLabel.textContent = size + 'px';
+    markerNamePanel.style.display = marker ? 'block' : 'none';
+    markerNameEl.value = marker ? marker.label : '';
+  }
+
+  function hideDungeonTooltip() {
+    dungeonTooltip.style.display = 'none';
+  }
+
+  function showDungeonTooltip(segment, clientX, clientY) {
+    const areaRect = canvasArea.getBoundingClientRect();
+    dungeonTooltip.innerHTML = '';
+    const title = document.createElement('strong');
+    title.textContent = `#${segment.number} ${segment.name}`;
+    const description = document.createElement('span');
+    description.textContent = segment.notes || 'No description.';
+    dungeonTooltip.appendChild(title);
+    dungeonTooltip.appendChild(description);
+    dungeonTooltip.style.display = 'block';
+    const tooltipRect = dungeonTooltip.getBoundingClientRect();
+    dungeonTooltip.style.left = Math.max(8, Math.min(clientX - areaRect.left + 14, areaRect.width - tooltipRect.width - 8)) + 'px';
+    dungeonTooltip.style.top = Math.max(8, Math.min(clientY - areaRect.top + 14, areaRect.height - tooltipRect.height - 8)) + 'px';
+  }
+
   function renderDungeonSegments() {
     const s = cs();
     dungeonSegmentList.innerHTML = '';
@@ -969,6 +1176,11 @@ import { escapeHtml } from './ui/escape-html.mjs';
     s.dungeonSegments.forEach((seg) => {
       const row = document.createElement('div');
       row.className = 'list-row' + (seg.id === dungeonActiveSegmentId ? ' selected' : '');
+      row.style.cursor = 'pointer';
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', `Select dungeon segment #${seg.number} ${seg.name}`);
+      if (seg.id === dungeonActiveSegmentId) row.setAttribute('aria-describedby', 'dungeonTooltip');
       const swatch = document.createElement('span');
       swatch.style.cssText = 'width:14px; height:14px; border-radius:50%; flex:none; display:inline-block;';
       swatch.style.background = seg.color;
@@ -976,7 +1188,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       main.className = 'row-main';
       const title = document.createElement('div');
       title.className = 'row-title';
-      title.textContent = seg.name;
+      title.textContent = `#${seg.number} ${seg.name}`;
       const sub = document.createElement('div');
       sub.className = 'row-sub';
       sub.textContent = seg.notes ? (seg.notes.length > 44 ? seg.notes.slice(0, 44) + '…' : seg.notes) : 'No notes yet';
@@ -989,6 +1201,11 @@ import { escapeHtml } from './ui/escape-html.mjs';
         syncDungeonInspector(seg);
         renderDungeonSegments();
         redraw();
+      });
+      row.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        row.click();
       });
       dungeonSegmentList.appendChild(row);
     });
@@ -1457,24 +1674,48 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const calibTransform = (px, py) => [dx + (px - cam.x) * scale, dy + (py - cam.y) * scale];
     drawCalibLineOnCtx(targetCtx, calibTransform, scale);
     drawCalibSquareOnCtx(targetCtx, s, calibTransform, scale);
+    drawDisplayMarkers(targetCtx, s.markers, cam, dx, dy, dw, dh, scale);
     targetCtx.restore();
   }
 
   function drawCameraOverlay(s) {
+    const displayScale = s.mapCanvas.width / workCanvas.width;
     ctx.save();
+    ctx.fillStyle = 'rgba(4, 6, 10, 0.52)';
+    ctx.beginPath();
+    ctx.rect(0, 0, s.mapCanvas.width, s.mapCanvas.height);
+    ctx.rect(s.camera.x, s.camera.y, s.camera.w, s.camera.h);
+    ctx.fill('evenodd');
     ctx.strokeStyle = '#7c9cff';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 6]);
+    ctx.lineWidth = 3 * displayScale;
+    ctx.setLineDash([8 * displayScale, 6 * displayScale]);
     ctx.strokeRect(s.camera.x, s.camera.y, s.camera.w, s.camera.h);
     ctx.setLineDash([]);
     ctx.fillStyle = '#7c9cff';
-    const hs = HANDLE_SIZE;
+    const hs = 10 * displayScale;
     const corners = [
       [s.camera.x, s.camera.y], [s.camera.x + s.camera.w, s.camera.y],
       [s.camera.x, s.camera.y + s.camera.h], [s.camera.x + s.camera.w, s.camera.y + s.camera.h]
     ];
     corners.forEach(([cx, cy]) => ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs));
+    const label = 'DISPLAY VIEW';
+    const fontSize = 11 * displayScale;
+    ctx.font = `700 ${fontSize}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textBaseline = 'top';
+    const labelWidth = ctx.measureText(label).width;
+    const labelX = s.camera.x + 8 * displayScale;
+    const labelY = s.camera.y + 8 * displayScale;
+    ctx.fillStyle = 'rgba(10,11,14,0.88)';
+    ctx.fillRect(labelX - 4 * displayScale, labelY - 3 * displayScale, labelWidth + 8 * displayScale, fontSize + 6 * displayScale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, labelX, labelY);
     ctx.restore();
+  }
+
+  function syncCameraControls(s) {
+    const zoomPercent = Math.round(s.mapCanvas.width / s.camera.w * 100);
+    cameraZoomEl.value = Math.max(100, Math.min(2000, zoomPercent));
+    cameraZoomLabel.textContent = zoomPercent + '%';
   }
 
   // Runs on every redraw (i.e. after every state-changing action in the app) rather than being
@@ -1495,13 +1736,18 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const s = cs();
     if (!s) return;
     reapplyZoomLockCalibration(s);
+    syncCameraControls(s);
+    const scaleX = workCanvas.width / s.mapCanvas.width;
+    const scaleY = workCanvas.height / s.mapCanvas.height;
     ctx.clearRect(0, 0, workCanvas.width, workCanvas.height);
-    ctx.drawImage(s.mapCanvas, 0, 0);
+    ctx.drawImage(s.mapCanvas, 0, 0, workCanvas.width, workCanvas.height);
     ctx.save();
     ctx.globalAlpha = fogViewOpacity;
-    ctx.drawImage(s.fogCanvas, 0, 0);
+    ctx.drawImage(s.fogCanvas, 0, 0, workCanvas.width, workCanvas.height);
     ctx.restore();
-    drawDungeon(ctx, s.dungeonSegments, dungeonActiveSegmentId);
+    ctx.save();
+    ctx.scale(scaleX, scaleY);
+    drawDungeon(ctx, s.dungeonSegments, dungeonActiveSegmentId, s.mapCanvas.width, s.mapCanvas.height);
     drawControlGrid(ctx, s, gridColor);
     drawControlAoe(ctx, s, selectedAoeId, pxPerFoot(s));
     const identityTransform = (px, py) => [px, py];
@@ -1509,6 +1755,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     drawCalibSquareOnCtx(ctx, s, identityTransform, 1);
     drawCanvasMarkers(ctx, s.markers, selectedMarkerId);
     if (appMode === 'camera') drawCameraOverlay(s);
+    ctx.restore();
 
     const displayWindow = displayWindowManager?.getWindow();
     if (displayWindow && !displayWindow.closed) {
@@ -1519,24 +1766,38 @@ import { escapeHtml } from './ui/escape-html.mjs';
     }
     scheduleAutosave();
   }
+  let pendingRedrawFrame = null;
+  function scheduleRedrawFrame() {
+    if (pendingRedrawFrame !== null) return;
+    pendingRedrawFrame = requestAnimationFrame(() => {
+      pendingRedrawFrame = null;
+      redraw();
+    });
+  }
   window.__fogRedraw = redraw;
 
   function canvasCoords(e) {
     const rect = workCanvas.getBoundingClientRect();
-    const scaleX = workCanvas.width / rect.width;
-    const scaleY = workCanvas.height / rect.height;
+    const s = cs();
+    const scaleX = s.mapCanvas.width / rect.width;
+    const scaleY = s.mapCanvas.height / rect.height;
     return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   }
 
   function findMarkerNear(s, x, y) {
     const rect = workCanvas.getBoundingClientRect();
-    const scale = workCanvas.width / rect.width;
-    const threshold = 18 * scale;
-    return s.markers.find(m => Math.hypot(m.x - x, m.y - y) < threshold);
+    const scale = s.mapCanvas.width / rect.width;
+    for (let index = s.markers.length - 1; index >= 0; index--) {
+      const marker = s.markers[index];
+      const threshold = (marker.size || 12) + 6 * scale;
+      if (Math.hypot(marker.x - x, marker.y - y) < threshold) return marker;
+    }
+    return null;
   }
 
   // ---------- Canvas interaction ----------
-  workCanvas.addEventListener('mousedown', (e) => {
+  workCanvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
     const s = cs();
     if (!s) return;
     const p = canvasCoords(e);
@@ -1544,23 +1805,46 @@ import { escapeHtml } from './ui/escape-html.mjs';
     if (appMode === 'brush') {
       drawing = true;
       lastX = p.x; lastY = p.y;
-      paintFogStroke(s.fogCtx, p.x, p.y, p.x, p.y, parseInt(brushSize.value, 10), fogDir === 'reveal', softEdge.checked);
+      activeFogAction = {
+        type: 'stroke',
+        points: [{ x: p.x, y: p.y }],
+        brushSize: parseInt(brushSize.value, 10),
+        revealing: fogDir === 'reveal',
+        softEdge: softEdge.checked,
+      };
+      applyFogAction(s.fogCtx, activeFogAction, s.fogCanvas.width, s.fogCanvas.height);
+      s.fogDirty = true;
       redraw();
       return;
     }
 
     if (appMode === 'dungeon') {
       const hit = hitTestDungeon(s.dungeonSegments, p.x, p.y);
+      if (dungeonTool === 'select') {
+        dungeonActiveSegmentId = hit ? hit.id : null;
+        dungeonNotesPanel.style.display = hit ? 'block' : 'none';
+        if (hit) {
+          syncDungeonInspector(hit);
+          showDungeonTooltip(hit, e.clientX, e.clientY);
+        } else {
+          hideDungeonTooltip();
+        }
+        renderDungeonSegments();
+        redraw();
+        return;
+      }
       let seg = null;
       if (hit) {
         dungeonActiveSegmentId = hit.id;
         seg = hit;
         syncDungeonInspector(seg);
+        showDungeonTooltip(hit, e.clientX, e.clientY);
       } else if (dungeonActiveSegmentId !== null) {
         seg = s.dungeonSegments.find(sg => sg.id === dungeonActiveSegmentId) || null;
       }
       if (!seg) {
-        seg = { id: nextDungeonId++, name: 'Segment ' + (s.dungeonSegments.length + 1), color: dungeonColor, notes: '', strokes: [] };
+        const number = nextDungeonNumber(s.dungeonSegments);
+        seg = { id: nextDungeonId++, number, name: 'Segment ' + number, color: dungeonColor, notes: '', strokes: [] };
         s.dungeonSegments.push(seg);
         dungeonActiveSegmentId = seg.id;
         syncDungeonInspector(seg);
@@ -1577,18 +1861,21 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const existing = findMarkerNear(s, p.x, p.y);
       if (existing) {
         selectedMarkerId = existing.id;
+        syncMarkerInspector(existing);
         draggingMarker = existing;
         dragGrabOffset = { dx: p.x - existing.x, dy: p.y - existing.y };
         redraw();
       } else if (selectedMarkerId !== null) {
         selectedMarkerId = null; // click away deselects rather than dropping a new marker
+        syncMarkerInspector(null);
         redraw();
       } else {
         const val = prompt('Label for this marker (e.g. "poison dart trap"):', '');
         if (val === null) return;
-        const marker = { id: nextMarkerId++, x: p.x, y: p.y, color: markerColor, shape: markerShape, label: val.trim() };
+        const marker = { id: nextMarkerId++, x: p.x, y: p.y, color: markerColor, shape: markerShape, label: val.trim(), visible: markerVisibleDefault, size: markerSizeDefault };
         s.markers.push(marker);
         selectedMarkerId = marker.id;
+        syncMarkerInspector(marker);
         pushMarkersUndo(s);
         redraw();
       }
@@ -1596,7 +1883,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     }
 
     if (appMode === 'camera') {
-      const scale = workCanvas.width / workCanvas.getBoundingClientRect().width;
+      const scale = s.mapCanvas.width / workCanvas.getBoundingClientRect().width;
       cameraDrag = hitTestCamera(s.camera, p.x, p.y, scale, HANDLE_SIZE);
       if (!cameraDrag) {
         s.camera.x = clamp(p.x - s.camera.w / 2, 0, s.mapCanvas.width - s.camera.w);
@@ -1623,7 +1910,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
         if (sel && (sel.type === 'square' || sel.type === 'cone')) {
           const handle = rotationHandlePoint(sel, pxPerFoot(s));
           const rect = workCanvas.getBoundingClientRect();
-          const scale = workCanvas.width / rect.width;
+          const scale = s.mapCanvas.width / rect.width;
           if (Math.hypot(p.x - handle.x, p.y - handle.y) < 16 * scale) {
             rotatingAoe = sel;
             redraw();
@@ -1661,12 +1948,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const existing = findMarkerNear(s, p.x, p.y);
       if (existing) {
         s.markers = s.markers.filter(m => m !== existing);
-        if (selectedMarkerId === existing.id) selectedMarkerId = null;
+        if (selectedMarkerId === existing.id) { selectedMarkerId = null; syncMarkerInspector(null); }
         pushMarkersUndo(s);
         redraw();
       }
     } else if (appMode === 'aoe') {
-      const existing = hitTestAoe(s, p.x, p.y);
+      const scale = s.mapCanvas.width / workCanvas.getBoundingClientRect().width;
+      const existing = hitTestAoe(s, p.x, p.y)
+        || [...s.aoeShapes].reverse().find(shape => Math.hypot(shape.x - p.x, shape.y - p.y) <= 12 * scale);
       if (existing) {
         s.aoeShapes = s.aoeShapes.filter(a => a !== existing);
         if (selectedAoeId === existing.id) selectedAoeId = null;
@@ -1682,16 +1971,11 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const p = canvasCoords(e);
     const existing = findMarkerNear(s, p.x, p.y);
     if (!existing) return;
-    const val = prompt('Edit marker label (clear text to delete):', existing.label);
-    if (val === null) return;
-    if (val.trim() === '') {
-      s.markers = s.markers.filter(m => m !== existing);
-      if (selectedMarkerId === existing.id) selectedMarkerId = null;
-    } else {
-      existing.label = val.trim();
-    }
-    pushMarkersUndo(s);
+    selectedMarkerId = existing.id;
+    syncMarkerInspector(existing);
     redraw();
+    markerNameEl.focus();
+    markerNameEl.select();
   });
 
   workCanvas.addEventListener('dblclick', (e) => {
@@ -1706,15 +1990,17 @@ import { escapeHtml } from './ui/escape-html.mjs';
     redraw();
   });
 
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
     const s = cs();
     if (!s) return;
 
     if (appMode === 'brush' && drawing) {
       const p = canvasCoords(e);
-      paintFogStroke(s.fogCtx, lastX, lastY, p.x, p.y, parseInt(brushSize.value, 10), fogDir === 'reveal', softEdge.checked);
+      paintFogStroke(s.fogCtx, lastX, lastY, p.x, p.y, activeFogAction.brushSize, activeFogAction.revealing, activeFogAction.softEdge);
+      activeFogAction.points.push({ x: p.x, y: p.y });
+      s.fogDirty = true;
       lastX = p.x; lastY = p.y;
-      redraw();
+      scheduleRedrawFrame();
       return;
     }
 
@@ -1723,7 +2009,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const seg = s.dungeonSegments.find(sg => sg.id === dungeonActiveSegmentId);
       if (seg && seg.strokes.length) {
         seg.strokes[seg.strokes.length - 1].points.push({ x: p.x, y: p.y });
-        redraw();
+        scheduleRedrawFrame();
       }
       return;
     }
@@ -1732,8 +2018,20 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const p = canvasCoords(e);
       draggingMarker.x = p.x - dragGrabOffset.dx;
       draggingMarker.y = p.y - dragGrabOffset.dy;
-      redraw();
+      workCanvas.style.cursor = 'grabbing';
+      scheduleRedrawFrame();
       return;
+    }
+
+    if (appMode === 'markers' && !draggingMarker) {
+      const p = canvasCoords(e);
+      workCanvas.style.cursor = findMarkerNear(s, p.x, p.y) ? 'grab' : 'crosshair';
+    }
+
+    if (appMode === 'dungeon' && !dungeonPainting) {
+      const p = canvasCoords(e);
+      const hit = hitTestDungeon(s.dungeonSegments, p.x, p.y);
+      workCanvas.style.cursor = dungeonTool === 'select' ? (hit ? 'pointer' : 'default') : 'crosshair';
     }
 
     if (appMode === 'camera' && cameraDrag) {
@@ -1741,13 +2039,13 @@ import { escapeHtml } from './ui/escape-html.mjs';
       applyCameraDrag(s.camera, s.mapCanvas.width, s.mapCanvas.height, cameraDrag, p.x - lastX, p.y - lastY);
       lastX = p.x; lastY = p.y;
       workCanvas.style.cursor = cameraCursorFor(cameraDrag);
-      redraw();
+      scheduleRedrawFrame();
       return;
     }
 
     if (appMode === 'camera' && !cameraDrag) {
       const p = canvasCoords(e);
-      const scale = workCanvas.width / workCanvas.getBoundingClientRect().width;
+      const scale = s.mapCanvas.width / workCanvas.getBoundingClientRect().width;
       workCanvas.style.cursor = cameraCursorFor(hitTestCamera(s.camera, p.x, p.y, scale, HANDLE_SIZE));
     }
 
@@ -1755,7 +2053,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const p = canvasCoords(e);
       draggingAoe.x = p.x - dragGrabOffsetAoe.dx;
       draggingAoe.y = p.y - dragGrabOffsetAoe.dy;
-      redraw();
+      workCanvas.style.cursor = 'grabbing';
+      scheduleRedrawFrame();
       return;
     }
 
@@ -1767,7 +2066,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
         s.aoeCalibration = Math.max(10, Math.min(2000, (lengthMapPx / calibRefFt) * 5));
         aoeCalibrationEl.value = Math.round(s.aoeCalibration);
       }
-      redraw();
+      scheduleRedrawFrame();
       return;
     }
 
@@ -1780,7 +2079,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       aoeRotationEl.value = deg;
       aoeRotationLabel.textContent = deg + '°';
       workCanvas.style.cursor = 'grabbing';
-      redraw();
+      scheduleRedrawFrame();
       return;
     }
 
@@ -1790,24 +2089,40 @@ import { escapeHtml } from './ui/escape-html.mjs';
         const p = canvasCoords(e);
         const handle = rotationHandlePoint(sel, pxPerFoot(s));
         const rect = workCanvas.getBoundingClientRect();
-        const scale = workCanvas.width / rect.width;
-        workCanvas.style.cursor = (Math.hypot(p.x - handle.x, p.y - handle.y) < 16 * scale) ? 'grab' : 'crosshair';
+        const scale = s.mapCanvas.width / rect.width;
+        const overHandle = Math.hypot(p.x - handle.x, p.y - handle.y) < 16 * scale;
+        workCanvas.style.cursor = overHandle || hitTestAoe(s, p.x, p.y) ? 'grab' : 'crosshair';
       } else {
-        workCanvas.style.cursor = 'crosshair';
+        const p = canvasCoords(e);
+        workCanvas.style.cursor = hitTestAoe(s, p.x, p.y) ? 'grab' : 'crosshair';
       }
     } else if (appMode === 'aoe' && !draggingAoe && !rotatingAoe) {
-      workCanvas.style.cursor = 'crosshair';
+      const p = canvasCoords(e);
+      workCanvas.style.cursor = hitTestAoe(s, p.x, p.y) ? 'grab' : 'crosshair';
     }
   });
 
-  window.addEventListener('mouseup', () => {
+  function finishDungeonPainting() {
+    if (!dungeonPainting) return;
+    dungeonPainting = false;
     const s = cs();
-    if (drawing && s) { drawing = false; pushUndo(s); }
-    if (dungeonPainting) {
-      dungeonPainting = false;
-      if (s) { pushDungeonUndo(s); scheduleAutosave(); }
+    if (s) {
+      pushDungeonUndo(s);
+      scheduleAutosave();
     }
-    if (draggingMarker && s) { draggingMarker = null; pushMarkersUndo(s); scheduleAutosave(); }
+  }
+
+  workCanvas.addEventListener('pointerleave', finishDungeonPainting);
+
+  function finishPointerInteraction() {
+    const s = cs();
+    if (drawing && s) {
+      drawing = false;
+      pushFogAction(s, activeFogAction);
+      activeFogAction = null;
+    }
+    finishDungeonPainting();
+    if (draggingMarker && s) { draggingMarker = null; pushMarkersUndo(s); scheduleAutosave(); workCanvas.style.cursor = 'grab'; }
     else if (draggingMarker) { draggingMarker = null; }
     if (cameraDrag && s) { pushCameraUndo(s); }
     cameraDrag = null;
@@ -1828,7 +2143,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
       }
       redraw();
     }
-  });
+  }
+  window.addEventListener('pointerup', finishPointerInteraction);
+  window.addEventListener('pointercancel', finishPointerInteraction);
 
   let cameraWheelUndoTimer = null;
   workCanvas.addEventListener('wheel', (e) => {
@@ -1861,14 +2178,38 @@ import { escapeHtml } from './ui/escape-html.mjs';
     pushCameraUndo(s);
     redraw();
   });
+  centerCameraBtn.addEventListener('click', () => {
+    const s = cs(); if (!s) return;
+    s.camera.x = (s.mapCanvas.width - s.camera.w) / 2;
+    s.camera.y = (s.mapCanvas.height - s.camera.h) / 2;
+    pushCameraUndo(s);
+    redraw();
+  });
+  cameraZoomEl.addEventListener('input', () => {
+    const s = cs(); if (!s) return;
+    const zoomPercent = parseInt(cameraZoomEl.value, 10);
+    const targetWidth = s.mapCanvas.width * 100 / zoomPercent;
+    const factor = targetWidth / s.camera.w;
+    zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, s.camera.x + s.camera.w / 2, s.camera.y + s.camera.h / 2, factor);
+    cameraZoomLabel.textContent = zoomPercent + '%';
+    redraw();
+  });
+  cameraZoomEl.addEventListener('change', () => {
+    const s = cs(); if (s) pushCameraUndo(s);
+  });
 
   // ---------- Mode switching ----------
   function setAppMode(newMode) {
     appMode = newMode;
-    if (newMode !== 'markers') { selectedMarkerId = null; draggingMarker = null; }
+    if (newMode !== 'markers') { selectedMarkerId = null; draggingMarker = null; syncMarkerInspector(null); }
     if (newMode !== 'aoe') { selectedAoeId = null; draggingAoe = null; rotatingAoe = null; workCanvas.style.cursor = ''; }
     if (newMode !== 'camera') { workCanvas.style.cursor = ''; }
-    if (newMode !== 'dungeon') { dungeonPainting = false; }
+    if (newMode !== 'dungeon') {
+      dungeonPainting = false;
+      dungeonActiveSegmentId = null;
+      dungeonNotesPanel.style.display = 'none';
+      hideDungeonTooltip();
+    }
     [mapsModeBtn, brushModeBtn, markerModeBtn, cameraModeBtn, gridModeBtn, dungeonModeBtn, calibrateModeBtn, aoeModeBtn, diceModeBtn, initModeBtn].forEach(b => b.classList.remove('active'));
     mapsControls.style.display = 'none';
     fogControls.style.display = 'none';
@@ -1882,12 +2223,17 @@ import { escapeHtml } from './ui/escape-html.mjs';
     initiativeControls.style.display = 'none';
     if (newMode === 'maps') { mapsModeBtn.classList.add('active'); mapsControls.style.display = 'flex'; }
     if (newMode === 'brush') { brushModeBtn.classList.add('active'); fogControls.style.display = 'flex'; }
-    if (newMode === 'markers') { markerModeBtn.classList.add('active'); markerControls.style.display = 'flex'; }
+    if (newMode === 'markers') { markerModeBtn.classList.add('active'); markerControls.style.display = 'flex'; workCanvas.style.cursor = 'crosshair'; }
     if (newMode === 'camera') { cameraModeBtn.classList.add('active'); cameraControls.style.display = 'flex'; }
     if (newMode === 'grid') { gridModeBtn.classList.add('active'); gridControls.style.display = 'flex'; }
-    if (newMode === 'dungeon') { dungeonModeBtn.classList.add('active'); dungeonControls.style.display = 'flex'; renderDungeonSegments(); }
+    if (newMode === 'dungeon') {
+      dungeonModeBtn.classList.add('active');
+      dungeonControls.style.display = 'flex';
+      workCanvas.style.cursor = dungeonTool === 'select' ? 'default' : 'crosshair';
+      renderDungeonSegments();
+    }
     if (newMode === 'calibrate') { calibrateModeBtn.classList.add('active'); calibrateControls.style.display = 'flex'; updateCalibrationUI(); }
-    if (newMode === 'aoe') { aoeModeBtn.classList.add('active'); aoeControls.style.display = 'flex'; updateCalibrationUI(); }
+    if (newMode === 'aoe') { aoeModeBtn.classList.add('active'); aoeControls.style.display = 'flex'; workCanvas.style.cursor = 'crosshair'; updateCalibrationUI(); }
     if (newMode === 'dice') { diceModeBtn.classList.add('active'); diceControls.style.display = 'flex'; }
     if (newMode === 'init') { initModeBtn.classList.add('active'); initiativeControls.style.display = 'flex'; renderInitiative(); }
     const labels = { brush: 'Undo (Fog)', markers: 'Undo (Markers)', camera: 'Undo (Camera)', grid: 'Undo (Grid)', dungeon: 'Undo (Dungeon)', aoe: 'Undo (AoE)', calibrate: 'Undo (AoE)' };
@@ -1928,8 +2274,24 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
 
   // ---------- Undo (per-slide, per-mode — each tab remembers its own history independently) ----------
-  function pushUndo(s) {
-    pushBounded(s.undoStack, snapshotFog(s), UNDO_LIMIT);
+  function pushFogAction(s, action) {
+    if (!action) return;
+    s.fogActions.push(action);
+    if (s.fogActions.length > UNDO_LIMIT) {
+      s.fogCommittedActions.push(s.fogActions.shift());
+    }
+    s.fogDirty = true;
+    scheduleAutosave();
+  }
+
+  function replayFog(s) {
+    s.fogCtx.clearRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
+    s.fogCtx.globalCompositeOperation = 'source-over';
+    if (s.fogBaseImage) s.fogCtx.drawImage(s.fogBaseImage, 0, 0);
+    [...s.fogCommittedActions, ...s.fogActions].forEach((action) => {
+      applyFogAction(s.fogCtx, action, s.fogCanvas.width, s.fogCanvas.height);
+    });
+    s.fogDirty = true;
   }
   function pushMarkersUndo(s) {
     pushBounded(s.markersUndoStack, cloneValue(s.markers), UNDO_LIMIT);
@@ -1945,12 +2307,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
   }
 
   function undoFog(s) {
-    if (s.undoStack.length <= 1) return;
-    s.undoStack.pop();
-    const prev = s.undoStack[s.undoStack.length - 1];
-    s.fogCtx.clearRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
-    s.fogCtx.globalCompositeOperation = 'source-over';
-    s.fogCtx.drawImage(prev, 0, 0);
+    if (s.fogActions.length === 0) return;
+    s.fogActions.pop();
+    replayFog(s);
     redraw();
   }
   function undoMarkers(s) {
@@ -1960,6 +2319,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     s.markers = cloneValue(prev);
     selectedMarkerId = null;
     draggingMarker = null;
+    syncMarkerInspector(null);
     redraw();
   }
   function undoCamera(s) {
@@ -2037,6 +2397,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       if (appMode === 'markers' && selectedMarkerId !== null) {
         selectedMarkerId = null;
         draggingMarker = null;
+        syncMarkerInspector(null);
         redraw();
       }
       if (appMode === 'aoe' && selectedAoeId !== null) {
@@ -2047,6 +2408,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       if (appMode === 'dungeon' && dungeonActiveSegmentId !== null) {
         dungeonActiveSegmentId = null;
         dungeonNotesPanel.style.display = 'none';
+        hideDungeonTooltip();
         renderDungeonSegments();
         redraw();
       }
@@ -2067,6 +2429,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       if (s && selectedMarkerId !== null) {
         s.markers = s.markers.filter(m => m.id !== selectedMarkerId);
         selectedMarkerId = null;
+        syncMarkerInspector(null);
         pushMarkersUndo(s);
         redraw();
       }
@@ -2092,8 +2455,51 @@ import { escapeHtml } from './ui/escape-html.mjs';
     if (!s || selectedMarkerId === null) return;
     s.markers = s.markers.filter(m => m.id !== selectedMarkerId);
     selectedMarkerId = null;
+    syncMarkerInspector(null);
     pushMarkersUndo(s);
     redraw();
+  });
+
+  markerVisibleToggle.addEventListener('change', () => {
+    const s = cs();
+    const marker = s && selectedMarkerId !== null ? s.markers.find(item => item.id === selectedMarkerId) : null;
+    if (marker) {
+      marker.visible = markerVisibleToggle.checked;
+      pushMarkersUndo(s);
+      redraw();
+    } else {
+      markerVisibleDefault = markerVisibleToggle.checked;
+    }
+  });
+
+  markerSizeEl.addEventListener('input', () => {
+    const size = parseInt(markerSizeEl.value, 10);
+    markerSizeLabel.textContent = size + 'px';
+    const s = cs();
+    const marker = s && selectedMarkerId !== null ? s.markers.find(item => item.id === selectedMarkerId) : null;
+    if (marker) {
+      marker.size = size;
+      redraw();
+    } else {
+      markerSizeDefault = size;
+      renderShapeSwatchPreviews();
+    }
+  });
+  markerSizeEl.addEventListener('change', () => {
+    const s = cs();
+    if (s && selectedMarkerId !== null) pushMarkersUndo(s);
+  });
+
+  markerNameEl.addEventListener('input', () => {
+    const s = cs();
+    const marker = s && selectedMarkerId !== null ? s.markers.find(item => item.id === selectedMarkerId) : null;
+    if (!marker) return;
+    marker.label = markerNameEl.value;
+    redraw();
+  });
+  markerNameEl.addEventListener('change', () => {
+    const s = cs();
+    if (s && selectedMarkerId !== null) pushMarkersUndo(s);
   });
 
   // ---------- AoE sidebar wiring ----------
@@ -2248,16 +2654,34 @@ import { escapeHtml } from './ui/escape-html.mjs';
   dungeonBrushSizeLabel.textContent = dungeonBrushSizeEl.value + 'px';
 
   dungeonNewSegmentBtn.addEventListener('click', () => {
+    dungeonTool = 'paint';
+    dungeonPaintToolBtn.classList.add('active');
+    dungeonSelectToolBtn.classList.remove('active');
     dungeonActiveSegmentId = null;
     dungeonNotesPanel.style.display = 'none';
+    hideDungeonTooltip();
     renderDungeonSegments();
     redraw();
+  });
+
+  dungeonPaintToolBtn.addEventListener('click', () => {
+    dungeonTool = 'paint';
+    dungeonPaintToolBtn.classList.add('active');
+    dungeonSelectToolBtn.classList.remove('active');
+    workCanvas.style.cursor = 'crosshair';
+  });
+
+  dungeonSelectToolBtn.addEventListener('click', () => {
+    dungeonTool = 'select';
+    dungeonSelectToolBtn.classList.add('active');
+    dungeonPaintToolBtn.classList.remove('active');
+    workCanvas.style.cursor = 'default';
   });
 
   dungeonSegmentName.addEventListener('input', () => {
     const s = cs(); if (!s) return;
     const seg = s.dungeonSegments.find(sg => sg.id === dungeonActiveSegmentId);
-    if (seg) { seg.name = dungeonSegmentName.value; renderDungeonSegments(); }
+    if (seg) { seg.name = dungeonSegmentName.value; renderDungeonSegments(); redraw(); }
   });
   dungeonSegmentName.addEventListener('change', () => {
     const s = cs(); if (s) pushDungeonUndo(s);
@@ -2281,6 +2705,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     s.dungeonSegments = s.dungeonSegments.filter(sg => sg.id !== seg.id);
     dungeonActiveSegmentId = null;
     dungeonNotesPanel.style.display = 'none';
+    hideDungeonTooltip();
     pushDungeonUndo(s);
     renderDungeonSegments();
     redraw();
@@ -2290,16 +2715,16 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   resetFogBtn.addEventListener('click', () => {
     const s = cs(); if (!s) return;
-    s.fogCtx.globalCompositeOperation = 'source-over';
-    s.fogCtx.fillStyle = '#000000';
-    s.fogCtx.fillRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
-    pushUndo(s);
+    const action = { type: 'cover' };
+    applyFogAction(s.fogCtx, action, s.fogCanvas.width, s.fogCanvas.height);
+    pushFogAction(s, action);
     redraw();
   });
   clearFogBtn.addEventListener('click', () => {
     const s = cs(); if (!s) return;
-    s.fogCtx.clearRect(0, 0, s.fogCanvas.width, s.fogCanvas.height);
-    pushUndo(s);
+    const action = { type: 'clear' };
+    applyFogAction(s.fogCtx, action, s.fogCanvas.width, s.fogCanvas.height);
+    pushFogAction(s, action);
     redraw();
   });
 

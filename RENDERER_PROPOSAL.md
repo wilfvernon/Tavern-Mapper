@@ -12,18 +12,36 @@ The application must continue to:
 - Present every uploaded map as one continuous image.
 - Preserve existing controls, coordinate behavior, saved-session shape, fog behavior, display privacy, and second-window operation.
 
+## Current implementation status
+
+The near-term Canvas 2D path is implemented:
+
+- Maximum map dimension: 6144px.
+- Maximum control-preview backing dimension: 2400px.
+- Full-resolution logical coordinates, fog, sessions, and display-camera crops.
+- Original compressed data retained for imports already within the cap.
+- Fog data re-encoded only after fog changes.
+- Fog undo stored as compact replayable actions instead of full-canvas snapshots.
+- High-frequency interaction redraws coalesced by animation frame.
+- Reusable `npm run benchmark:6k` command and checked-in `benchmark-6k.json` report.
+- Current verification: 14 module contracts and 127 browser behavior tests.
+
+The current benchmark verifies 6144×4096 import, fog, camera, popup display, autosave, export, restore, and two loaded maps without page errors. It also records a minimum decoded map+fog memory floor of approximately 192 MiB per 6144×4096 slide. Timings from the headless dev container are regression evidence, not a substitute for target-laptop measurements.
+
+Not implemented: Worker preprocessing/encoding, WebGL2, WebGPU, tiling, GPU cache management, or cross-renderer framebuffer parity.
+
 ## Decision Required Before Implementation
 
-The largest map users actually need must be established before choosing the rendering architecture.
+The current requirement is implemented at 6144px with Canvas 2D. A larger target must be established before choosing any additional rendering architecture.
 
-The currently measured problem is that the 2400px cap feels restrictive. A likely practical target is 4096-6144px, while common TTRPG map exports generally remain below 6K-8K. A tiled deep-zoom renderer is justified only if maps materially above 8K are a real product requirement rather than hypothetical headroom.
+The original measured problem was that the 2400px cap felt restrictive. The first Canvas 2D optimization step now supports 6144px maps with a bounded 2400px control preview and a reusable benchmark. Common TTRPG map exports generally remain below 6K-8K. A tiled deep-zoom renderer remains justified only if maps materially above 8K become a real product requirement rather than hypothetical headroom.
 
 Use this decision rule:
 
 | Required map size | Recommended approach |
 |---|---|
-| Up to 4096px | Keep Canvas 2D; raise the cap after benchmark validation |
-| Up to 6144-8192px | Optimize Canvas 2D first; add dirty autosave and worker encoding; benchmark before considering WebGL2 |
+| Up to 6144px | Use the implemented Canvas 2D path and validate `npm run benchmark:6k` on target hardware |
+| 6144-8192px | Profile first; add Worker preprocessing only for measured stalls, then consider WebGL2 if budgets still fail |
 | Regularly above 8192px | Introduce WebGL2 and evaluate tiled rendering |
 | 12K-16K or deep world maps | WebGL2 tiled multi-resolution rendering is justified |
 
@@ -31,12 +49,11 @@ Use this decision rule:
 
 Take the smallest measured step first:
 
-1. Keep Canvas 2D as the renderer.
-2. Benchmark 4096px and 6144px maps on representative hardware.
-3. Add per-slide dirty tracking so autosave does not re-encode unchanged maps.
-4. Move image encoding and expensive preprocessing to a Worker.
-5. Raise the cap only to the largest size that meets the agreed performance budgets.
-6. Escalate to WebGL2 only if 6K-8K maps fail those budgets or larger maps are confirmed requirements.
+1. Keep Canvas 2D as the renderer. **Done.**
+2. Support and benchmark 6144px maps. **Done in the dev container; target-hardware run still recommended.**
+3. Avoid re-encoding unchanged fog and remove full-canvas fog undo snapshots. **Done.**
+4. Move expensive preprocessing/encoding to a Worker only if target-hardware profiling still shows unacceptable stalls. **Not yet justified.**
+5. Escalate to WebGL2 only if 6K-8K maps fail agreed budgets or larger maps become confirmed requirements.
 
 If a GPU renderer becomes necessary, use **WebGL2 first**, retain Canvas 2D as fallback, and keep WebGPU as a possible later backend.
 
@@ -71,25 +88,25 @@ A $10{,}000 \times 10{,}000$ image consumes approximately 400 MB before mipmaps,
 
 For a confirmed 12K+ target, use a tiled, multi-resolution map representation. For a 4K-6K target, this cost is probably unnecessary.
 
-## Scope and Effort
+## Scope and Relative Complexity
 
-These are rough engineering estimates, not calendar commitments. They assume preserving the standalone HTML artifact and maintaining the full regression suite.
+These levels compare architectural scope; they are deliberately not calendar estimates.
 
-| Option | Scope | Relative effort | Principal risks |
+| Option | Scope | Complexity | Principal risks |
 |---|---|---:|---|
-| Raise cap with benchmarks | Benchmark and adjust import cap | 1-3 days | Memory spikes on weaker machines |
-| Canvas optimization | Dirty autosave, Worker encoding/preprocessing, targeted redraw work | 1-3 weeks | Persistence races, Worker/file compatibility |
-| WebGL2 parity renderer | Renderer contract, WebGL2 implementation, fallback, context recovery, parity infrastructure | 4-8 weeks | Visual parity, lifecycle, browser/GPU differences |
-| Tiled multi-resolution WebGL2 | Tile generation, level selection, cache, seams, fog integration, stress testing | Additional 4-8+ weeks | Complexity, memory management, tile artifacts |
-| WebGPU backend | Separate backend, fallback, device loss, browser qualification | Additional multi-week project | Compatibility and operational complexity |
+| 6K Canvas path | Bounded preview, cached serialization, compact fog undo, benchmark | Implemented | Memory pressure on weaker machines |
+| Worker preprocessing | Inline Blob Worker plus fallback and persistence sequencing | Medium | Worker/file compatibility, races |
+| WebGL2 parity renderer | Renderer contract, backend, fallback, context recovery, parity infrastructure | Large | Visual parity, lifecycle, browser/GPU differences |
+| Tiled multi-resolution WebGL2 | Tile levels, cache, seams, tiled fog, stress testing | Very large | Complexity, memory management, artifacts |
+| WebGPU backend | Separate backend, fallback, device loss, browser qualification | Large additional project | Compatibility and operational complexity |
 
-The full tiled proposal is comparable in scope to a substantial portion of the existing application. It should not be approved merely to move from 2400px to 4096px.
+The full tiled proposal is comparable in scope to a substantial portion of the existing application. It is not justified by the already-solved move from 2400px to 6144px.
 
 ## Relationship to the Existing Module Refactor
 
 This work is not independent of the modular refactor.
 
-The current refactor has already extracted Canvas 2D drawing into `src/renderers/canvas2d.mjs` and separated several renderer-independent feature calculations. The next renderer work should continue that same architecture rather than start a second restructuring effort.
+The refactor has extracted Canvas 2D drawing into `src/renderers/canvas2d.mjs` and separated renderer-independent geometry, camera, dungeon, undo, autosave, dice, initiative, display-lifecycle, and UI helpers. Future renderer work must continue that architecture rather than start a second restructuring effort.
 
 Sequence them as follows:
 
@@ -256,7 +273,7 @@ Suggested WebGL2 implementation:
 - Fog: sampled mask texture or tiled mask textures.
 - Grid: shader-generated grid or line geometry.
 - AoE: small dynamic vertex buffers.
-- Markers: control renderer only.
+- Markers: control renderer plus only markers explicitly opted into the display.
 - Dungeon segments: control renderer only.
 - Calibration guides: temporary line geometry.
 - Camera guides: control renderer only.
@@ -266,14 +283,19 @@ Preserve current layer ordering exactly.
 
 ## Near-Term Import and Persistence Work
 
-Before introducing tiles or WebGL2:
+Completed before considering tiles or WebGL2:
 
 1. Retain the current single-image model.
-2. Track which slides have changed since their last autosave encoding.
-3. Re-encode only changed map/fog data.
-4. Move encoding and optional downscaling to an inline Blob Worker where browser support permits.
-5. Preserve synchronous fallback behavior if Worker initialization fails.
-6. Benchmark import, redraw, autosave, and memory at 2400px, 4096px, 6144px, and 8192px.
+2. Track whether fog changed since its last encoding.
+3. Re-encode only changed fog; retain original compressed map data for in-cap imports.
+4. Replace full-canvas fog undo snapshots with compact replayable actions.
+5. Benchmark 6144×4096 import, redraw, autosave, export, restore, display, and two-map behavior.
+
+Remaining only if target-hardware profiling requires it:
+
+1. Move encoding and optional downscaling to an inline Blob Worker.
+2. Preserve synchronous fallback if Worker initialization fails.
+3. Extend the benchmark matrix to 8192px before changing the current cap.
 
 Only if tiling is approved should the import process become:
 
@@ -327,7 +349,7 @@ The final supported size should be determined by measurement rather than a hard 
 
 ## Gated Migration Plan
 
-### Phase 1: Establish Baselines
+### Phase 1: Establish Baselines — Partially complete
 
 Measure current Canvas 2D behavior using representative maps:
 
@@ -348,18 +370,20 @@ Measure:
 
 At the end of this phase, explicitly choose the required supported size. Do not proceed to GPU work without that decision.
 
-### Phase 2: Optimize the Existing Path
+### Phase 2: Optimize the Existing Path — Implemented for 6K
 
 Implement:
 
-- Per-slide dirty tracking for autosave.
-- Worker-based encoding/preprocessing with fallback.
-- Avoidance of redundant full-map work.
-- Performance instrumentation for long tasks and redraw latency.
+- Dirty fog encoding for autosave.
+- Compact fog undo actions.
+- Bounded control preview.
+- Original compressed map retention for in-cap imports.
+- Animation-frame redraw coalescing.
+- Reusable 6K performance instrumentation.
 
 Then rerun the benchmark matrix.
 
-**Exit gate:** If the chosen 4K-8K target meets budgets, stop here. The problem is solved without a GPU migration.
+**Current exit gate:** Run `npm run benchmark:6k` on the intended laptop. If 6K meets practical interaction and memory expectations there, stop here.
 
 ### Phase 3: Finish the Renderer Boundary If Needed
 
@@ -390,7 +414,7 @@ This is new test infrastructure, not a minor extension of the current suite.
 
 ### Phase 6: Add WebGL2Renderer
 
-Initially use the existing 2400px map cap and one texture.
+Initially use the current 6144px map cap and one texture, reducing the parity fixture size only if a target GPU cannot allocate it safely.
 
 The objective is framebuffer and behavior parity, not higher resolution yet.
 
@@ -446,7 +470,7 @@ Only implement WebGPU if profiling identifies a meaningful limitation that WebGL
 
 ## Current and Required Test Infrastructure
 
-Current coverage includes 113 browser behavior tests, 12 direct module contracts, browser-composited screenshots, and narrow pixel assertions. It protects workflows and several privacy/layer contracts.
+Current coverage includes 127 browser behavior tests, 14 direct module contracts, browser-composited screenshots, and narrow pixel assertions. It protects workflows, map renaming, camera framing controls, display privacy, selection rendering, dungeon compositing, marker visibility/size, dungeon numbering/tooltips, accessibility semantics, keyboard interaction, touch-pointer input, responsive layout, 6K downscaling, persistence, and popup behavior.
 
 It does not currently provide:
 
@@ -545,11 +569,12 @@ Mitigation:
 
 The recommended near-term decision is:
 
-1. Confirm whether the real target is 4096px, 6144px, 8192px, or materially larger.
-2. Optimize and benchmark Canvas 2D first.
-3. Stop once the confirmed need is met.
-4. Use WebGL2 only if measurements justify it.
-5. Use tiled multi-resolution rendering only for a confirmed 8K+ or deep-map requirement.
+1. Treat 6144px as the current implemented target.
+2. Run the checked-in benchmark on the intended laptop/TV setup.
+3. Stop if the current Canvas path is satisfactory.
+4. Consider Worker preprocessing only for measured main-thread stalls.
+5. Use WebGL2 only if measurements or larger confirmed requirements justify it.
+6. Use tiled multi-resolution rendering only for a confirmed 8K+ or deep-map requirement.
 
 ## Definition of Done for the Near-Term Resolution Work
 

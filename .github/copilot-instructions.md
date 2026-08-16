@@ -1,6 +1,6 @@
 # Tavern Mapper repository instructions
 
-Read `README.md` for product behavior and scope, and `TESTING.md` for renderer-migration gates.
+Read `README.md` for product behavior and scope, `TESTING.md` for renderer-migration gates, and `UI_UX_AUDIT.md` before broad interface/accessibility work.
 
 ## Non-negotiable distribution contract
 
@@ -23,8 +23,8 @@ The release artifact is `tavern-mapper.html`. It must remain one self-contained 
 - `src/display/window-manager.mjs`: DPR-aware popup document and self-healing lifecycle.
 - `src/ui/`: shared UI helpers.
 - `scripts/build.mjs`: esbuild bundle and single-file HTML assembly.
-- `tests/*.test.mjs`: direct tests for extracted modules (currently 12 contracts).
-- `test-suite.js`: 113 sequential Playwright behavior tests against the built standalone file.
+- `tests/*.test.mjs`: direct tests for extracted modules (currently 14 contracts).
+- `test-suite.js`: 127 sequential Playwright behavior tests against the built standalone file.
 
 ## Build and validation
 
@@ -49,13 +49,15 @@ The Playwright suite is mostly sequential and stateful. Tests share one browser 
 - AoE and Calibrate intentionally share undo history.
 - Treat `cs()`, `redraw()`, canvas coordinates, display compositing, persistence, and undo dispatch as cross-cutting high-risk code.
 - Preserve the display canvas device-pixel-ratio behavior and self-healing popup behavior.
-- Do not raise the 2400px map cap without revisiting the memory/performance analysis and GPU texture-limit tests.
+- The current map cap is 6144px with a 2400px control-preview cap. Do not raise either without rerunning `npm run benchmark:6k`, revisiting memory/performance analysis, and extending the high-resolution tests.
 
 ## Known state hazards
 
 - Opening or closing calibration preview UI must not recapture zoom-lock calibration references. Separate tool visibility from committed calibration changes.
 - AoE type controls are intentionally dual-purpose: they set the next-placement default and mutate a selected shape. Test both branches when changing them.
-- GM-only markers and dungeon segments must never enter the display composite.
+- Marker visibility and size controls are also dual-purpose: they set creation defaults when no marker is selected and mutate the selected marker otherwise. Preserve both branches and reset inspector controls on deselection.
+- Dungeon defaults to Paint. Select mode must select without adding strokes, numbered labels/tooltips are control-only, and a stroke must end when the pointer leaves the map.
+- Hidden markers and all dungeon segments must never enter the display composite; only markers explicitly marked visible may be composited.
 - Initiative AC/HP must never enter the display output.
 
 ## WebGL/WebGPU work

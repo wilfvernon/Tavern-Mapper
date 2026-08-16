@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-08-15T23:50:58.869Z",
+  "environment": "Playwright headless Chromium in the current dev container; rerun on target hardware for release decisions.",
+  "dimensions": {
+    "width": 6144,
+    "height": 4096,
+    "previewWidth": 2400,
+    "previewHeight": 1600
+  },
+  "timingsMs": {
+    "fixtureGeneration": 2323.2,
+    "importFirstMap": 329.3,
+    "coverFog": 119,
+    "fogBrushGesture": 573.4,
+    "tenCameraRedraws": 620.2,
+    "displayStartup": 217.3,
+    "autosaveReadyAfterChanges": 1708.5,
+    "exportSession": 66.6,
+    "restoreSession": 638.3,
+    "importSecondMap": 265.4
+  },
+  "memory": {
+    "bytesPerRgbaCanvas": 100663296,
+    "minimumMapAndFogBytesPerSlide": 201326592,
+    "minimumMapAndFogMiBPerSlide": 192,
+    "usedJsHeapBytes": 10000000,
+    "totalJsHeapBytes": 10000000
+  },
+  "exportSizeBytes": 853834,
+  "pageErrors": []
+}

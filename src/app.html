@@ -10,28 +10,28 @@
     <div class="sidebar-header">
       <div class="header-display-row">
         <button class="primary" id="openDisplayBtn">Open display window</button>
-        <div class="status" id="displayStatus">Not connected.</div>
+        <div class="status" id="displayStatus" role="status" aria-live="polite">Not connected.</div>
       </div>
-      <div class="tabs">
-        <button id="mapsModeBtn" class="active">Maps</button>
-        <button id="catMapBtn">Map</button>
-        <button id="catDisplayBtn">Display</button>
-        <button id="catToolsBtn">Tools</button>
+      <div class="tabs" role="tablist" aria-label="Tool categories">
+        <button id="mapsModeBtn" class="active" role="tab" aria-selected="true" aria-controls="mapsControls">Maps</button>
+        <button id="catMapBtn" role="tab" aria-selected="false" aria-controls="subTabsMap">Map</button>
+        <button id="catDisplayBtn" role="tab" aria-selected="false" aria-controls="subTabsDisplay">Display</button>
+        <button id="catToolsBtn" role="tab" aria-selected="false" aria-controls="subTabsTools">Tools</button>
       </div>
-      <div class="tabs" id="subTabsMap" style="display:none;">
-        <button id="brushModeBtn">Fog</button>
-        <button id="markerModeBtn">Markers</button>
-        <button id="gridModeBtn">Grid</button>
-        <button id="dungeonModeBtn">Dungeon</button>
+      <div class="tabs" id="subTabsMap" role="tablist" aria-label="Map tools" style="display:none;">
+        <button id="brushModeBtn" role="tab" aria-selected="false" aria-controls="fogControls">Fog</button>
+        <button id="markerModeBtn" role="tab" aria-selected="false" aria-controls="markerControls">Markers</button>
+        <button id="gridModeBtn" role="tab" aria-selected="false" aria-controls="gridControls">Grid</button>
+        <button id="dungeonModeBtn" role="tab" aria-selected="false" aria-controls="dungeonControls">Dungeon</button>
       </div>
-      <div class="tabs" id="subTabsDisplay" style="display:none;">
-        <button id="cameraModeBtn">Camera</button>
-        <button id="calibrateModeBtn">Calibrate</button>
+      <div class="tabs" id="subTabsDisplay" role="tablist" aria-label="Display tools" style="display:none;">
+        <button id="cameraModeBtn" role="tab" aria-selected="false" aria-controls="cameraControls">Camera</button>
+        <button id="calibrateModeBtn" role="tab" aria-selected="false" aria-controls="calibrateControls">Calibrate</button>
       </div>
-      <div class="tabs" id="subTabsTools" style="display:none;">
-        <button id="aoeModeBtn">AoE</button>
-        <button id="diceModeBtn">Dice</button>
-        <button id="initModeBtn">Init</button>
+      <div class="tabs" id="subTabsTools" role="tablist" aria-label="Gameplay tools" style="display:none;">
+        <button id="aoeModeBtn" role="tab" aria-selected="false" aria-controls="aoeControls">AoE</button>
+        <button id="diceModeBtn" role="tab" aria-selected="false" aria-controls="diceControls">Dice</button>
+        <button id="initModeBtn" role="tab" aria-selected="false" aria-controls="initiativeControls">Init</button>
       </div>
     </div>
 
@@ -39,14 +39,14 @@
 
     <div class="group" id="mapsControls">
       <label>Slideshow</label>
-      <label class="file-btn" for="fileInput">Add image(s)…</label>
+      <label class="file-btn" for="fileInput" role="button" tabindex="0">Add image(s)…</label>
       <input type="file" id="fileInput" accept="image/*" multiple>
       <div id="slideList"></div>
       <div class="nav-row">
         <button id="prevSlideBtn">◀ Prev</button>
         <button id="nextSlideBtn">Next ▶</button>
       </div>
-      <div class="status">Drag images onto the map area to add them. Drag list items to reorder. Fog and grid persist per map when you switch. Use "Save session…" at the bottom of the sidebar so a crash never costs you your whole slideshow.</div>
+      <div class="status">Drag images onto the map area to add them. Drag list items to reorder, or use the edit button to rename them. Map state persists when you switch. Use "Save session…" at the bottom of the sidebar so a crash never costs you your whole slideshow.</div>
       <div class="status"><strong>How this works</strong><br>1. Add one or more map images — each keeps its own fog.<br>2. Click "Open display window" above, drag it onto the TV, press F11 for fullscreen.<br>3. Switch maps anytime; fog stays as you left it on each one. New maps start fully revealed.</div>
     </div>
 
@@ -56,16 +56,16 @@
         <button id="revealModeBtn" class="active">Reveal</button>
         <button id="coverModeBtn">Re-cover</button>
       </div>
-      <label style="margin-top:6px;">Brush Size</label>
-      <input type="range" id="brushSize" min="10" max="500" value="120">
+      <label for="brushSize" style="margin-top:6px;">Brush Size</label>
+      <input type="range" id="brushSize" min="10" max="500" value="120" aria-describedby="brushSizeLabel">
       <div class="value-row"><span>Small</span><span id="brushSizeLabel">120px</span><span>Large</span></div>
       <div class="brush-preview"><div class="brush-dot" id="brushDot"></div></div>
       <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:4px;">
         <input type="checkbox" id="softEdge" checked>
         Soft edge (feathered)
       </label>
-      <label style="margin-top:6px;">Control View Fog Opacity</label>
-      <input type="range" id="fogOpacity" min="0" max="100" value="55">
+      <label for="fogOpacity" style="margin-top:6px;">Control View Fog Opacity</label>
+      <input type="range" id="fogOpacity" min="0" max="100" value="55" aria-describedby="fogOpacityLabel">
       <div class="value-row"><span>See-through</span><span id="fogOpacityLabel">55%</span><span>Solid</span></div>
       <div class="status">This only changes how fog looks on <strong>your</strong> screen so you can see the map underneath. The display screen always shows fog fully solid.</div>
       <button id="resetFogBtn" style="margin-top:6px;">Cover entire map</button>
@@ -78,20 +78,37 @@
       <div class="mode-row" id="colorSwatchesRecent" style="margin-top:6px;"></div>
       <div class="value-row" style="align-items:center; margin-top:6px;">
         <span>Custom color</span>
-        <input type="color" id="markerColorWheel" value="#ff5b5b" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+        <input type="color" id="markerColorWheel" value="#ff5b5b" aria-label="Custom marker color" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
       </div>
       <label style="margin-top:6px;">Marker Shape</label>
       <div class="shape-swatches" id="shapeSwatches"></div>
-      <button id="deleteSelectedMarkerBtn" style="margin-top:6px;">Delete selected marker</button>
-      <div class="status">Click empty space to drop a marker. Click an existing marker to select it — drag to move, Escape to deselect, Delete/Backspace or the button above to remove, right-click to remove instantly. Double-click to rename (clear the text to delete). Markers never appear on the display screen.</div>
+      <label for="markerSize" style="margin-top:6px;">Marker Size</label>
+      <input type="range" id="markerSize" min="6" max="60" value="12" aria-describedby="markerSizeLabel">
+      <div class="value-row"><span>Small</span><span id="markerSizeLabel">12px</span><span>Large</span></div>
+      <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:6px;">
+        <input type="checkbox" id="markerVisibleToggle">
+        Show on display screen
+      </label>
+      <div id="markerNamePanel" style="display:none;">
+        <label for="markerName">Marker Name</label>
+        <input type="text" id="markerName" placeholder="Marker name">
+      </div>
+      <button class="danger" id="deleteSelectedMarkerBtn" style="margin-top:6px;">Delete selected marker</button>
+      <div class="status">Click empty space to drop a marker. Click an existing marker to select it — drag to move, Escape to deselect, Delete/Backspace or the button above to remove, right-click to remove instantly. Double-click focuses the selected marker's name field. Display and size controls set creation defaults or edit the selected marker.</div>
     </div>
 
     <div class="group" id="cameraControls" style="display:none;">
       <label>Display Camera</label>
-      <div class="status">Drag the box to pan, drag a corner to zoom, or scroll/pinch over the map to zoom at your cursor.</div>
-      <button id="zoomInBtn">Zoom in</button>
-      <button id="zoomOutBtn">Zoom out</button>
-      <button id="fitFullBtn">Fit whole map</button>
+      <div class="status">The bright rectangle is exactly what the display sees. Drag inside it to pan, drag a corner to resize, click outside to recenter, or scroll/pinch to zoom.</div>
+      <label for="cameraZoom">Display Zoom</label>
+      <input type="range" id="cameraZoom" min="100" max="2000" step="25" value="100" aria-describedby="cameraZoomLabel">
+      <div class="value-row"><span>Whole map</span><span id="cameraZoomLabel">100%</span><span>Close</span></div>
+      <div class="mode-row">
+        <button id="zoomOutBtn">Zoom out</button>
+        <button id="fitFullBtn">Fit map</button>
+        <button id="zoomInBtn">Zoom in</button>
+      </div>
+      <button id="centerCameraBtn">Center display view</button>
     </div>
 
     <div class="group" id="gridControls" style="display:none;">
@@ -102,51 +119,55 @@
       </label>
       <div class="value-row" style="align-items:center;">
         <span>Line color</span>
-        <input type="color" id="gridColor" value="#ffffff" style="width:40px; height:26px; padding:0; border:1px solid var(--panel-border); border-radius:4px; background:none;">
+        <input type="color" id="gridColor" value="#ffffff" aria-label="Grid line color" style="width:40px; height:26px; padding:0; border:1px solid var(--panel-border); border-radius:4px; background:none;">
       </div>
-      <label style="margin-top:2px;">Square Size</label>
-      <input type="range" id="gridSize" min="20" max="300" value="100">
+      <label for="gridSize" style="margin-top:2px;">Square Size</label>
+      <input type="range" id="gridSize" min="20" max="300" value="100" aria-describedby="gridSizeLabel">
       <div class="value-row"><span>Fine</span><span id="gridSizeLabel">100px</span><span>Coarse</span></div>
-      <label style="margin-top:6px;">Offset X</label>
-      <input type="range" id="gridOffsetX" min="-150" max="150" value="0">
+      <label for="gridOffsetX" style="margin-top:6px;">Offset X</label>
+      <input type="range" id="gridOffsetX" min="-150" max="150" value="0" aria-describedby="gridOffsetXLabel">
       <div class="value-row"><span>◀</span><span id="gridOffsetXLabel">0px</span><span>▶</span></div>
-      <label style="margin-top:2px;">Offset Y</label>
-      <input type="range" id="gridOffsetY" min="-150" max="150" value="0">
+      <label for="gridOffsetY" style="margin-top:2px;">Offset Y</label>
+      <input type="range" id="gridOffsetY" min="-150" max="150" value="0" aria-describedby="gridOffsetYLabel">
       <div class="value-row"><span>▲</span><span id="gridOffsetYLabel">0px</span><span>▼</span></div>
-      <label style="margin-top:6px;">Opacity (control + display)</label>
-      <input type="range" id="gridOpacity" min="0" max="100" value="100">
+      <label for="gridOpacity" style="margin-top:6px;">Opacity (control + display)</label>
+      <input type="range" id="gridOpacity" min="0" max="100" value="100" aria-describedby="gridOpacityLabel">
       <div class="value-row"><span>Faint</span><span id="gridOpacityLabel">100%</span><span>Solid</span></div>
       <div class="status">Grid settings are per-map, like fog — except line color, which is shared across all maps.</div>
     </div>
 
     <div class="group" id="dungeonControls" style="display:none;">
       <label>Paint Segments (GM-only — never shown on the display)</label>
-      <label style="margin-top:2px;">Brush Size</label>
-      <input type="range" id="dungeonBrushSize" min="10" max="300" value="60">
+      <div class="mode-row">
+        <button id="dungeonPaintToolBtn" class="active">Paint</button>
+        <button id="dungeonSelectToolBtn">Select</button>
+      </div>
+      <label for="dungeonBrushSize" style="margin-top:2px;">Brush Size</label>
+      <input type="range" id="dungeonBrushSize" min="10" max="300" value="60" aria-describedby="dungeonBrushSizeLabel">
       <div class="value-row"><span>Small</span><span id="dungeonBrushSizeLabel">60px</span><span>Large</span></div>
       <label style="margin-top:6px;">New Segment Color</label>
       <div class="mode-row" id="dungeonColorSwatches"></div>
       <div class="mode-row" id="dungeonColorSwatchesRecent" style="margin-top:6px;"></div>
       <div class="value-row" style="align-items:center; margin-top:6px;">
         <span>Custom color</span>
-        <input type="color" id="dungeonColorWheel" value="#ff5b5b" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+        <input type="color" id="dungeonColorWheel" value="#ff5b5b" aria-label="Custom dungeon segment color" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
       </div>
       <button id="dungeonNewSegmentBtn" style="margin-top:6px;">Start new segment</button>
 
       <div class="divider"></div>
 
       <div id="dungeonNotesPanel" style="display:none;">
-        <label>Segment Name</label>
+        <label for="dungeonSegmentName">Segment Name</label>
         <input type="text" id="dungeonSegmentName" placeholder="Segment name">
-        <label style="margin-top:6px;">Notes</label>
+        <label for="dungeonSegmentNotes" style="margin-top:6px;">Notes</label>
         <textarea id="dungeonSegmentNotes" rows="6" placeholder="Room description, monsters, traps, loot…"></textarea>
-        <button id="dungeonDeleteSegmentBtn" style="margin-top:6px;">Delete this segment</button>
+        <button class="danger" id="dungeonDeleteSegmentBtn" style="margin-top:6px;">Delete this segment</button>
         <div class="divider"></div>
       </div>
 
       <label>All Segments</label>
       <div id="dungeonSegmentList" style="display:flex; flex-direction:column; gap:6px;"></div>
-      <div class="status">Click empty space to paint into the active segment, or start a fresh one if nothing's active. Click an existing segment to select it — you can keep painting into it, or edit its name/notes. "Start new segment" clears the active one so your next stroke begins something new. Escape deselects. Deleting a segment removes its notes permanently and asks for confirmation.</div>
+      <div class="status">Paint is the default: drag to add to the active segment or create one. Switch to Select to click a segment without painting, then edit its name, notes, or color. "Start new segment" returns to Paint with no active segment. Escape deselects.</div>
     </div>
 
     <div class="group" id="aoeControls" style="display:none;">
@@ -156,23 +177,23 @@
         <button id="aoeSquareBtn">Square</button>
         <button id="aoeConeBtn">Cone</button>
       </div>
-      <label style="margin-top:6px;" id="aoeFtLabel">Radius (ft)</label>
+      <label for="aoeFt" style="margin-top:6px;" id="aoeFtLabel">Radius (ft)</label>
       <input type="number" id="aoeFt" min="5" max="500" step="5" value="20">
-      <label style="margin-top:6px;">Rotation (square/cone)</label>
-      <input type="range" id="aoeRotation" min="0" max="359" value="0">
+      <label for="aoeRotation" style="margin-top:6px;">Rotation (square/cone)</label>
+      <input type="range" id="aoeRotation" min="0" max="359" value="0" aria-describedby="aoeRotationLabel">
       <div class="value-row"><span>◀</span><span id="aoeRotationLabel">0°</span><span>▶</span></div>
       <label style="margin-top:6px;">Color</label>
       <div class="mode-row" id="aoeColorSwatches"></div>
       <div class="mode-row" id="aoeColorSwatchesRecent" style="margin-top:6px;"></div>
       <div class="value-row" style="align-items:center; margin-top:6px;">
         <span>Custom color</span>
-        <input type="color" id="aoeColorWheel" value="#ff5b5b" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+        <input type="color" id="aoeColorWheel" value="#ff5b5b" aria-label="Custom AoE color" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
       </div>
       <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:6px;">
         <input type="checkbox" id="aoeVisibleToggle" checked>
         Show on display screen
       </label>
-      <button id="deleteSelectedAoeBtn" style="margin-top:6px;">Delete selected AoE shape</button>
+      <button class="danger" id="deleteSelectedAoeBtn" style="margin-top:6px;">Delete selected AoE shape</button>
       <div class="status">Click empty space to place a shape at the entered size. Click an existing one to select it — drag to move, Escape to deselect, double-click to show/hide it on the display, Delete/Backspace or the button above to remove, right-click to remove instantly. Hidden shapes still show on your screen (dashed) so you can prep them in advance. Feet-to-pixel scale for this map lives on the Calibrate tab.</div>
     </div>
 
@@ -181,7 +202,7 @@
       <div class="status">Sets how many feet an AoE shape's "ft" value represents on this map — everything else in the app (fog, markers, grid) is independent of this.</div>
       <div id="aoeCalibrationGridNote" class="status" style="display:none;">Using this map's grid: 1 square = 5ft.</div>
       <div id="aoeCalibrationManualRow">
-        <label style="margin-top:2px;">Pixels per 5ft square</label>
+        <label for="aoeCalibration" style="margin-top:2px;">Pixels per 5ft square</label>
         <input type="number" id="aoeCalibration" min="10" max="2000" step="5" value="100">
         <div class="status">On a grid, 5ft always equals one grid square automatically. Without a grid, calibrate here so AoE sizes are accurate for this specific map.</div>
 
@@ -194,7 +215,7 @@
           <button data-ft="10">10ft</button>
           <button data-ft="30">30ft</button>
         </div>
-        <input type="number" id="calibCustomFt" placeholder="Custom ft…" style="margin-top:6px;">
+        <input type="number" id="calibCustomFt" aria-label="Custom reference length in feet" placeholder="Custom ft…" style="margin-top:6px;">
         <button id="calibDrawLineBtn" style="margin-top:6px;">Draw a line to calibrate…</button>
         <button id="calibShowSquareBtn">Show reference square</button>
 
@@ -222,9 +243,9 @@
       </div>
       <div class="divider"></div>
       <label>Formula Roll</label>
-      <label style="margin-top:2px;">Number of Dice</label>
+      <label for="diceCount" style="margin-top:2px;">Number of Dice</label>
       <input type="number" id="diceCount" min="1" max="20" value="1">
-      <label style="margin-top:6px;">Modifier</label>
+      <label for="diceModifier" style="margin-top:6px;">Modifier</label>
       <input type="number" id="diceModifier" value="0">
       <div class="mode-row" style="margin-top:6px;">
         <button id="diceAdvBtn">Advantage</button>
@@ -232,7 +253,7 @@
         <button id="diceDisBtn">Disadvantage</button>
       </div>
       <button class="primary" id="rollDiceBtn" style="margin-top:6px;">Roll</button>
-      <div id="diceResult" class="status" style="font-size:16px; color:var(--text); min-height:20px;"></div>
+      <div id="diceResult" class="status" role="status" aria-live="polite" style="font-size:16px; color:var(--text); min-height:20px;"></div>
       <div class="divider"></div>
       <label>History</label>
       <div id="diceHistoryList" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
@@ -254,10 +275,10 @@
       <div class="divider"></div>
 
       <label>Add Combatant</label>
-      <input type="text" id="combatantName" placeholder="Name">
-      <input type="number" id="combatantScore" placeholder="Initiative" style="margin-top:6px;">
+      <input type="text" id="combatantName" aria-label="Combatant name" placeholder="Name">
+      <input type="number" id="combatantScore" aria-label="Combatant initiative" placeholder="Initiative" style="margin-top:6px;">
       <button id="addCombatantBtn" style="margin-top:6px;">Add to initiative</button>
-      <button id="resetInitiativeBtn" style="margin-top:6px;">Clear all / new encounter</button>
+      <button class="danger" id="resetInitiativeBtn" style="margin-top:6px;">Clear all / new encounter</button>
 
       <div class="status">Turn order is shared across all maps, not tied to any one of them. Sorted highest first; the current turn is marked ▶. AC/HP are optional (leave blank for players) and GM-only — never shown on the display. Type +N/-N into the HP box for damage/healing or a plain number to set it; each entry is logged and can be removed individually (tap the count next to HP to expand the log).</div>
     </div>
@@ -267,7 +288,7 @@
     <div class="sidebar-footer">
       <div class="nav-row" style="margin-bottom: 8px;">
         <button id="saveSessionBtn">Save session…</button>
-        <label class="file-btn" for="loadSessionInput" style="flex:1; text-align:center;">Load session…</label>
+        <label class="file-btn" for="loadSessionInput" role="button" tabindex="0" style="flex:1; text-align:center;">Load session…</label>
       </div>
       <input type="file" id="loadSessionInput" accept="application/json,.json">
       <div class="value-row" style="align-items:center;">
@@ -277,7 +298,7 @@
     </div>
   </div>
 
-  <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+  <div class="sidebar-resize-handle" id="sidebarResizeHandle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="220" aria-valuemax="560" aria-valuenow="280" tabindex="0"></div>
 
   <div class="canvas-area" id="canvasArea">
     <div class="resume-banner" id="resumeBanner" style="display:none;">
@@ -286,6 +307,8 @@
       <button id="discardBtn">Discard</button>
     </div>
     <canvas id="workCanvas" style="display:none;"></canvas>
+    <div id="dungeonTooltip" class="dungeon-tooltip" role="tooltip" style="display:none;"></div>
+    <div id="appStatus" class="sr-only" role="status" aria-live="polite"></div>
     <div class="empty-state" id="emptyState">Add a map image to begin — click "Add image(s)…" or drag one in here.</div>
   </div>
 </div>

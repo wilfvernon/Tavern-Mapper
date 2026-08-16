@@ -4,6 +4,7 @@
   "private": true,
   "description": "A lightweight, single-file tabletop map controller",
   "scripts": {
+    "benchmark:6k": "npm run build && node scripts/benchmark-6k.mjs",
     "build": "node scripts/build.mjs",
     "check": "npm run build && npm run test:unit && node test-suite.js",
     "migrate:legacy": "node scripts/extract-legacy-source.mjs",

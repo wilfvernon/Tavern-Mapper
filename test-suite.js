@@ -44,12 +44,21 @@ const TMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tavern-mapper-tests-'));
 const MAP1 = path.join(TMP_DIR, 'map1.png');
 const MAP2 = path.join(TMP_DIR, 'map2.png');
 const OVERSIZED_MAP = path.join(TMP_DIR, 'oversized-map.png');
+const DUNGEON_FLAT_MAP = path.join(TMP_DIR, 'dungeon-flat-map.png');
 fs.writeFileSync(MAP1, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAZAAAAEsCAIAAABi1XKVAAAEIUlEQVR4nO3YsQ3CQBQFQYxclitxEY5chiMqJiNASDg7L8xU8KLVv5uWdbkBFNxHDwA4S7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgYx494LNjO0ZPgH+3P/bRE965sIAMwQIyLvokfLngUQq/7cofMi4sIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgIx59IAvju0YPQG4ChcWkCFYQMa0rMvoDQCnuLCADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwgQ7CADMECMgQLyBAsIEOwgAzBAjIEC8gQLCBDsIAMwQIyBAvIECwg4wnvowuHwmbnMAAAAABJRU5ErkJggg==', 'base64'));
 fs.writeFileSync(MAP2, Buffer.from('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', 'base64'));
 
-const oversizedPng = new PNG({ width: 2401, height: 10 });
+const oversizedPng = new PNG({ width: 6145, height: 10 });
 oversizedPng.data.fill(120);
 fs.writeFileSync(OVERSIZED_MAP, PNG.sync.write(oversizedPng));
+const dungeonFlatPng = new PNG({ width: 400, height: 300 });
+for (let offset = 0; offset < dungeonFlatPng.data.length; offset += 4) {
+  dungeonFlatPng.data[offset] = 60;
+  dungeonFlatPng.data[offset + 1] = 90;
+  dungeonFlatPng.data[offset + 2] = 60;
+  dungeonFlatPng.data[offset + 3] = 255;
+}
+fs.writeFileSync(DUNGEON_FLAT_MAP, PNG.sync.write(dungeonFlatPng));
 
 const results = [];
 let page, browser, context;
@@ -84,7 +93,10 @@ async function getCanvasBox() {
 // the renderer moves to WebGL/WebGPU, and catches failures between the renderer and the final surface.
 async function sampleRenderedPixel(targetPage, selector, surfaceX, surfaceY) {
   const locator = targetPage.locator(selector);
-  const nativeSize = await locator.evaluate(surface => ({ width: surface.width, height: surface.height }));
+  const nativeSize = await locator.evaluate(surface => ({
+    width: Number(surface.dataset.mapWidth) || surface.width,
+    height: Number(surface.dataset.mapHeight) || surface.height,
+  }));
   const png = PNG.sync.read(await locator.screenshot({ animations: 'disabled' }));
   const x = Math.max(0, Math.min(png.width - 1, Math.floor(surfaceX / nativeSize.width * png.width)));
   const y = Math.max(0, Math.min(png.height - 1, Math.floor(surfaceY / nativeSize.height * png.height)));
@@ -128,7 +140,7 @@ async function dragOnCanvas(x0, y0, x1, y1, steps = 5) {
   const box = await getCanvasBox();
   const canvasNative = await page.evaluate(() => {
     const c = document.getElementById('workCanvas');
-    return { w: c.width, h: c.height };
+    return { w: Number(c.dataset.mapWidth) || c.width, h: Number(c.dataset.mapHeight) || c.height };
   });
   const scaleX = box.width / canvasNative.w;
   const scaleY = box.height / canvasNative.h;
@@ -147,7 +159,7 @@ async function clickOnCanvas(x, y) {
   const box = await getCanvasBox();
   const canvasNative = await page.evaluate(() => {
     const c = document.getElementById('workCanvas');
-    return { w: c.width, h: c.height };
+    return { w: Number(c.dataset.mapWidth) || c.width, h: Number(c.dataset.mapHeight) || c.height };
   });
   const scaleX = box.width / canvasNative.w;
   const scaleY = box.height / canvasNative.h;
@@ -158,7 +170,7 @@ async function dblclickOnCanvas(x, y) {
   const box = await getCanvasBox();
   const canvasNative = await page.evaluate(() => {
     const c = document.getElementById('workCanvas');
-    return { w: c.width, h: c.height };
+    return { w: Number(c.dataset.mapWidth) || c.width, h: Number(c.dataset.mapHeight) || c.height };
   });
   const scaleX = box.width / canvasNative.w;
   const scaleY = box.height / canvasNative.h;
@@ -169,7 +181,7 @@ async function rightClickOnCanvas(x, y) {
   const box = await getCanvasBox();
   const canvasNative = await page.evaluate(() => {
     const c = document.getElementById('workCanvas');
-    return { w: c.width, h: c.height };
+    return { w: Number(c.dataset.mapWidth) || c.width, h: Number(c.dataset.mapHeight) || c.height };
   });
   const scaleX = box.width / canvasNative.w;
   const scaleY = box.height / canvasNative.h;
@@ -277,6 +289,46 @@ async function main() {
     const cls = await page.getAttribute('#mapsModeBtn', 'class');
     assert(cls.includes('active'), 'maps tab should be active by default');
   });
+  await test('interactive controls expose accessible names and semantic active states', async () => {
+    const issues = await page.evaluate(() => {
+      const inputs = [...document.querySelectorAll('input:not([type="file"]), textarea')];
+      const unnamedInputs = inputs.filter(input => {
+        const explicit = input.id && document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+        return !explicit && !input.closest('label') && !input.getAttribute('aria-label') && !input.getAttribute('aria-labelledby');
+      }).map(input => input.id);
+      const unnamedButtons = [...document.querySelectorAll('button')]
+        .filter(button => !button.textContent.trim() && !button.getAttribute('aria-label') && !button.title)
+        .length;
+      return { unnamedInputs, unnamedButtons };
+    });
+    assert(issues.unnamedInputs.length === 0, 'inputs without accessible names: ' + issues.unnamedInputs.join(', '));
+    assert(issues.unnamedButtons === 0, 'unnamed buttons: ' + issues.unnamedButtons);
+    assert(await page.getAttribute('#mapsModeBtn', 'aria-selected') === 'true', 'active Maps tab should expose aria-selected=true');
+    assert(await page.getAttribute('#diceNormalBtn', 'aria-pressed') === 'true', 'active dice mode should expose aria-pressed=true');
+  });
+  await test('sidebar resize supports keyboard arrows and exposes its value', async () => {
+    const handle = page.locator('#sidebarResizeHandle');
+    await handle.focus();
+    const before = Number(await handle.getAttribute('aria-valuenow'));
+    await handle.press('ArrowRight');
+    const after = Number(await handle.getAttribute('aria-valuenow'));
+    assert(after === before + 16, 'expected keyboard resize by 16px, got ' + before + ' -> ' + after);
+    await handle.press('ArrowLeft');
+  });
+  await test('narrow viewport stacks controls above a usable canvas area', async () => {
+    const narrowPage = await context.newPage();
+    await narrowPage.setViewportSize({ width: 360, height: 720 });
+    await narrowPage.goto(APP_PATH);
+    const layout = await narrowPage.evaluate(() => ({
+      direction: getComputedStyle(document.querySelector('.layout')).flexDirection,
+      canvasWidth: document.querySelector('.canvas-area').getBoundingClientRect().width,
+      handleDisplay: getComputedStyle(document.querySelector('#sidebarResizeHandle')).display,
+    }));
+    assert(layout.direction === 'column', 'narrow layout should stack vertically');
+    assert(layout.canvasWidth >= 350, 'narrow canvas should retain viewport width, got ' + layout.canvasWidth);
+    assert(layout.handleDisplay === 'none', 'resize handle should hide in stacked layout');
+    await narrowPage.close();
+  });
 
   group('Display resolution (devicePixelRatio)');
   await test('display canvas buffer scales with devicePixelRatio instead of being upscaled and blurry', async () => {
@@ -330,13 +382,19 @@ async function main() {
   });
 
   group('Slideshow: adding and switching maps');
-  await test('images over 2400px are downscaled while preserving aspect ratio', async () => {
+  await test('images over 6144px are downscaled while preserving aspect ratio', async () => {
     const isolatedPage = await context.newPage();
     await isolatedPage.goto(APP_PATH);
     await isolatedPage.setInputFiles('#fileInput', [OVERSIZED_MAP]);
     await isolatedPage.waitForSelector('#workCanvas', { state: 'visible' });
-    const dimensions = await isolatedPage.locator('#workCanvas').evaluate(surface => ({ width: surface.width, height: surface.height }));
-    assert(dimensions.width === 2400 && dimensions.height === 10, 'unexpected downscaled dimensions: ' + JSON.stringify(dimensions));
+    const dimensions = await isolatedPage.locator('#workCanvas').evaluate(surface => ({
+      width: Number(surface.dataset.mapWidth),
+      height: Number(surface.dataset.mapHeight),
+      previewWidth: surface.width,
+      previewHeight: surface.height,
+    }));
+    assert(dimensions.width === 6144 && dimensions.height === 10, 'unexpected downscaled dimensions: ' + JSON.stringify(dimensions));
+    assert(dimensions.previewWidth <= 2400, 'control preview should remain bounded: ' + JSON.stringify(dimensions));
     await isolatedPage.close();
   });
   await test('adding one image creates a slide and shows canvas', async () => {
@@ -365,6 +423,26 @@ async function main() {
     await page.click('#prevSlideBtn');
     const label = await page.textContent('#dimsLabel');
     assert(label.includes('400') && label.includes('300'), 'expected map1 dims: ' + label);
+  });
+  await test('slide rows can switch maps from the keyboard', async () => {
+    const second = page.locator('.slide-item').nth(1);
+    await second.focus();
+    await second.press('Enter');
+    assert((await page.textContent('#dimsLabel')).includes('300 × 300'), 'Enter on slide row should select map2');
+    const first = page.locator('.slide-item').first();
+    await first.focus();
+    await first.press(' ');
+    assert((await page.textContent('#dimsLabel')).includes('400 × 300'), 'Space on slide row should restore map1');
+  });
+  await test('maps can be renamed inline and the name persists in sessions', async () => {
+    await page.locator('.slide-item').first().locator('.slide-edit').click();
+    const input = page.locator('.slide-item').first().locator('.slide-name-input');
+    await input.fill('Goblin Warrens');
+    await input.press('Enter');
+    assert((await page.textContent('.slide-item:first-child .slide-name')) === 'Goblin Warrens', 'renamed map should update the slideshow');
+    assert((await page.textContent('#dimsLabel')).startsWith('Goblin Warrens'), 'renamed active map should update the header');
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(json.slides[0].name === 'Goblin Warrens', 'renamed map did not persist in session JSON');
   });
 
   group('Fog: brush reveal/re-cover, opacity, undo actions');
@@ -429,6 +507,7 @@ async function main() {
     assert(markers.length === 1, 'expected 1 marker, got ' + markers.length);
     assert(markers[0].label === 'poison trap', 'label: ' + markers[0].label);
     assert(markers[0].shape === 'x', 'default shape should be x, got ' + markers[0].shape);
+    assert(markers[0].size === 12, 'default marker size should be 12px, got ' + markers[0].size);
   });
   await test('changing shape+color swatch affects the next newly placed marker', async () => {
     await page.click('#shapeSwatches button:nth-child(6)'); // skull is 6th of 7
@@ -464,7 +543,7 @@ async function main() {
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     assert(json.slides[0].markers.length === 0, 'expected 0 markers remaining, got ' + json.slides[0].markers.length);
   });
-  await test('markers never render on the display composite', async () => {
+  await test('markers default hidden and selected markers can toggle display visibility', async () => {
     const [popup] = await Promise.all([
       page.waitForEvent('popup'),
       page.click('#openDisplayBtn')
@@ -474,8 +553,76 @@ async function main() {
     page.once('dialog', d => d.accept('secret trap'));
     await placeNewAt(200, 150);
     const after = await captureRenderedSurface(popup, '#displayCanvas');
-    assertSurfacesEqual(before, after, 'adding a GM-only marker changed display pixels');
+    assertSurfacesEqual(before, after, 'adding a default-hidden marker changed display pixels');
+    await page.check('#markerVisibleToggle');
+    await page.fill('#markerSize', '36');
+    await page.dispatchEvent('#markerSize', 'input');
+    await page.dispatchEvent('#markerSize', 'change');
+    const visible = await captureRenderedSurface(popup, '#displayCanvas');
+    assertSurfacesDiffer(after, visible, 'opting the selected marker into the display did not change display pixels');
+    const { json, path: visibleSessionPath } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(json.slides[0].markers.find(marker => marker.label === 'secret trap').visible === true, 'selected marker visibility was not saved');
+    assert(json.slides[0].markers.find(marker => marker.label === 'secret trap').size === 36, 'selected marker size was not saved');
+    const restorePage = await context.newPage();
+    await restorePage.goto(APP_PATH);
+    await restorePage.setInputFiles('#loadSessionInput', visibleSessionPath);
+    await restorePage.waitForSelector('#workCanvas', { state: 'visible' });
+    const [restoredDownload] = await Promise.all([
+      restorePage.waitForEvent('download'),
+      restorePage.click('#saveSessionBtn'),
+    ]);
+    const restoredPath = path.join(TMP_DIR, '_marker_visibility_roundtrip.json');
+    await restoredDownload.saveAs(restoredPath);
+    const restoredJson = JSON.parse(fs.readFileSync(restoredPath, 'utf8'));
+    assert(restoredJson.slides[0].markers.find(marker => marker.label === 'secret trap').visible === true, 'visible marker did not survive session restore');
+    assert(restoredJson.slides[0].markers.find(marker => marker.label === 'secret trap').size === 36, 'marker size did not survive session restore');
+    await restorePage.close();
+    await page.uncheck('#markerVisibleToggle');
+    const hiddenAgain = await captureRenderedSurface(popup, '#displayCanvas');
+    assertSurfacesEqual(after, hiddenAgain, 'hiding the selected marker did not restore display pixels');
     await popup.close();
+  });
+  await test('marker visibility toggle sets creation default when nothing is selected', async () => {
+    await clickOnCanvas(10, 10);
+    await page.check('#markerVisibleToggle');
+    await page.fill('#markerSize', '28');
+    await page.dispatchEvent('#markerSize', 'input');
+    page.once('dialog', dialog => dialog.accept('visible by default'));
+    await clickOnCanvas(260, 60);
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    const marker = json.slides[0].markers.find(item => item.label === 'visible by default');
+    assert(marker?.visible === true, 'new marker did not inherit the visible creation default: ' + JSON.stringify(marker));
+    assert(marker?.size === 28, 'new marker did not inherit the size creation default: ' + JSON.stringify(marker));
+    await rightClickOnCanvas(260, 60);
+    await page.uncheck('#markerVisibleToggle');
+    await page.fill('#markerSize', '12');
+    await page.dispatchEvent('#markerSize', 'input');
+  });
+  await test('selected markers glow and marker hover/drag cursors communicate interaction', async () => {
+    await clickOnCanvas(200, 150);
+    const box = await getCanvasBox();
+    await page.mouse.move(box.x + 200, box.y + 150);
+    assert((await page.locator('#workCanvas').evaluate(canvas => canvas.style.cursor)) === 'grab', 'marker hover should use grab cursor');
+    await page.mouse.down();
+    await page.mouse.move(box.x + 205, box.y + 155);
+    assert((await page.locator('#workCanvas').evaluate(canvas => canvas.style.cursor)) === 'grabbing', 'marker drag should use grabbing cursor');
+    await page.mouse.up();
+    const selected = await captureRenderedSurface(page, '#workCanvas');
+    await page.keyboard.press('Escape');
+    const unselected = await captureRenderedSurface(page, '#workCanvas');
+    assertSurfacesDiffer(selected, unselected, 'marker selection glow did not change control pixels');
+  });
+  await test('double-click focuses the inline marker name editor and changes persist', async () => {
+    await dblclickOnCanvas(200, 150);
+    assert(await page.evaluate(() => document.activeElement?.id) === 'markerName', 'double-click should focus marker name field');
+    await page.fill('#markerName', 'renamed secret');
+    await page.dispatchEvent('#markerName', 'change');
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(json.slides[0].markers.some(marker => marker.label === 'renamed secret'), 'inline marker rename did not persist');
+  });
+  await test('session save announces completion through the live status region', async () => {
+    await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    await page.waitForFunction(() => document.getElementById('appStatus').textContent === 'Session saved.');
   });
 
   group('Camera: pan, zoom, fit-whole-map');
@@ -496,6 +643,28 @@ async function main() {
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     const cam = json.slides[0].camera;
     assert(cam.w === 400 && cam.h === 300, 'expected full extent restored, got ' + JSON.stringify(cam));
+  });
+  await test('camera zoom slider exposes framing directly and outside area is dimmed', async () => {
+    await page.fill('#cameraZoom', '200');
+    await page.dispatchEvent('#cameraZoom', 'input');
+    await page.dispatchEvent('#cameraZoom', 'change');
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(Math.abs(json.slides[0].camera.w - 200) < 1, '200% zoom should show half the map width');
+    assert((await page.textContent('#cameraZoomLabel')) === '200%', 'zoom readout should show 200%');
+    const outside = await sampleControlCanvasAlpha(20, 20);
+    const inside = await sampleControlCanvasAlpha(200, 150);
+    assert(outside.r < inside.r && outside.g < inside.g, 'outside-camera map area should be visibly dimmed');
+  });
+  await test('Center display view recenters without changing zoom', async () => {
+    await clickOnCanvas(340, 250);
+    let { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    const widthBefore = json.slides[0].camera.w;
+    await page.click('#centerCameraBtn');
+    ({ json } = await captureDownloadJSON(() => page.click('#saveSessionBtn')));
+    const cam = json.slides[0].camera;
+    assert(Math.abs(cam.x + cam.w / 2 - 200) < 1 && Math.abs(cam.y + cam.h / 2 - 150) < 1, 'center command should center the viewport');
+    assert(Math.abs(cam.w - widthBefore) < 1, 'center command should preserve zoom');
+    await page.click('#fitFullBtn');
   });
   await test('clicking outside the current camera viewport recenters it there', async () => {
     await page.click('#fitFullBtn');
@@ -676,10 +845,30 @@ async function main() {
   group('Dungeon Mode: paint segments, notes, selection, GM-only');
   await test('painting on empty space creates a new segment', async () => {
     await clickModeTab('dungeon');
+    assert((await page.getAttribute('#dungeonPaintToolBtn', 'class')).includes('active'), 'Dungeon should default to Paint');
+    assert((await page.locator('#workCanvas').evaluate(canvas => canvas.style.cursor)) === 'crosshair', 'Paint tool should use crosshair cursor');
     await dragOnCanvas(100, 100, 150, 150);
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     assert(json.slides[0].dungeonSegments.length === 1, 'expected 1 segment after painting, got ' + json.slides[0].dungeonSegments.length);
     assert(json.slides[0].dungeonSegments[0].strokes[0].points.length > 1, 'expected multiple recorded points along the stroke');
+  });
+  await test('touch pointer events use the same dungeon paint path', async () => {
+    const isolatedPage = await context.newPage();
+    await isolatedPage.goto(APP_PATH);
+    await isolatedPage.setInputFiles('#fileInput', [DUNGEON_FLAT_MAP]);
+    await isolatedPage.waitForSelector('#workCanvas', { state: 'visible' });
+    await isolatedPage.click('#catMapBtn');
+    await isolatedPage.click('#dungeonModeBtn');
+    const box = await isolatedPage.locator('#workCanvas').boundingBox();
+    await isolatedPage.locator('#workCanvas').dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, clientX: box.x + 80, clientY: box.y + 80 });
+    await isolatedPage.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true })), { x: box.x + 140, y: box.y + 130 });
+    await isolatedPage.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true })), { x: box.x + 140, y: box.y + 130 });
+    const [download] = await Promise.all([isolatedPage.waitForEvent('download'), isolatedPage.click('#saveSessionBtn')]);
+    const sessionPath = path.join(TMP_DIR, '_touch_pointer_session.json');
+    await download.saveAs(sessionPath);
+    const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    assert(session.slides[0].dungeonSegments[0].strokes[0].points.length >= 2, 'touch pointer drag should record a dungeon stroke');
+    await isolatedPage.close();
   });
   await test('editing name and notes on the active segment persists', async () => {
     await page.fill('#dungeonSegmentName', 'Throne Room');
@@ -688,8 +877,10 @@ async function main() {
     await page.dispatchEvent('#dungeonSegmentNotes', 'change');
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     const seg = json.slides[0].dungeonSegments[0];
+    assert(seg.number === 1, 'first dungeon segment should have stable number 1, got ' + seg.number);
     assert(seg.name === 'Throne Room', 'expected name to persist, got ' + seg.name);
     assert(seg.notes.includes('Trapdoor'), 'expected notes to persist, got ' + seg.notes);
+    assert((await page.textContent('#dungeonSegmentList .row-title')).startsWith('#1 Throne Room'), 'dungeon list should show segment number and name');
   });
   await test('continuing to paint elsewhere adds a stroke to the active segment rather than creating a new one', async () => {
     await dragOnCanvas(250, 200, 280, 220);
@@ -702,17 +893,97 @@ async function main() {
     await dragOnCanvas(50, 250, 80, 260);
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     assert(json.slides[0].dungeonSegments.length === 2, 'expected a second segment after New Segment + paint, got ' + json.slides[0].dungeonSegments.length);
+    assert(json.slides[0].dungeonSegments[1].number === 2, 'second dungeon segment should have stable number 2');
   });
-  await test('clicking an existing segment re-selects it and syncs the inspector', async () => {
+  await test('overlapping paint stays homogeneous and selection glow adds no centerline', async () => {
+    const isolatedPage = await context.newPage();
+    await isolatedPage.goto(APP_PATH);
+    await isolatedPage.setInputFiles('#fileInput', [DUNGEON_FLAT_MAP]);
+    await isolatedPage.waitForSelector('#workCanvas', { state: 'visible' });
+    await isolatedPage.click('#catMapBtn');
+    await isolatedPage.click('#dungeonModeBtn');
+    const isolatedCanvas = isolatedPage.locator('#workCanvas');
+    const box = await isolatedCanvas.boundingBox();
+    const drag = async (x0, y0, x1, y1) => {
+      await isolatedPage.mouse.move(box.x + x0, box.y + y0);
+      await isolatedPage.mouse.down();
+      await isolatedPage.mouse.move(box.x + x1, box.y + y1, { steps: 8 });
+      await isolatedPage.mouse.up();
+    };
+    const sample = async (x, y) => {
+      const image = PNG.sync.read(await isolatedCanvas.screenshot({ animations: 'disabled' }));
+      const offset = (y * image.width + x) * 4;
+      return { r: image.data[offset], g: image.data[offset + 1], b: image.data[offset + 2], a: image.data[offset + 3] };
+    };
+    await drag(120, 150, 280, 150);
+    await drag(200, 70, 200, 230);
+    const activeCenter = await sample(200, 170);
+    const activeBody = await sample(160, 170);
+    const activeDelta = Math.max(
+      Math.abs(activeCenter.r - activeBody.r),
+      Math.abs(activeCenter.g - activeBody.g),
+      Math.abs(activeCenter.b - activeBody.b),
+    );
+    assert(activeDelta <= 2, 'selected segment should have no bright centerline: center=' + JSON.stringify(activeCenter) + ' body=' + JSON.stringify(activeBody));
+    await isolatedPage.keyboard.press('Escape');
+    const overlap = await sample(200, 170);
+    const singleStroke = await sample(160, 170);
+    const overlapDelta = Math.max(
+      Math.abs(overlap.r - singleStroke.r),
+      Math.abs(overlap.g - singleStroke.g),
+      Math.abs(overlap.b - singleStroke.b),
+    );
+    assert(overlapDelta <= 2, 'overlapping strokes should keep flat opacity: overlap=' + JSON.stringify(overlap) + ' single=' + JSON.stringify(singleStroke));
+
+    await isolatedPage.click('#dungeonNewSegmentBtn');
+    await isolatedPage.mouse.move(box.x + 100, box.y + 100);
+    await isolatedPage.mouse.down();
+    await isolatedPage.mouse.move(box.x - 20, box.y + 100);
+    await isolatedPage.mouse.move(box.x + 300, box.y + 200);
+    await isolatedPage.mouse.up();
+    const [download] = await Promise.all([
+      isolatedPage.waitForEvent('download'),
+      isolatedPage.click('#saveSessionBtn'),
+    ]);
+    const sessionPath = path.join(TMP_DIR, '_dungeon_boundary_session.json');
+    await download.saveAs(sessionPath);
+    const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    const boundarySegment = session.slides[0].dungeonSegments.at(-1);
+    assert(boundarySegment.strokes[0].points.every(point => point.x < 150), 'stroke continued after leaving the canvas: ' + JSON.stringify(boundarySegment.strokes[0].points));
+    await isolatedPage.close();
+  });
+  await test('Select tool clicks existing segments without painting and uses pointer cursors', async () => {
+    const { json: before } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    const strokesBefore = before.slides[0].dungeonSegments.find(segment => segment.name === 'Throne Room').strokes.length;
+    await page.click('#dungeonSelectToolBtn');
+    const dungeonRow = page.locator('#dungeonSegmentList .list-row').filter({ hasText: 'Throne Room' });
+    await dungeonRow.focus();
+    await dungeonRow.press('Enter');
+    assert((await page.inputValue('#dungeonSegmentName')) === 'Throne Room', 'Enter on dungeon row should select the segment');
+    const box = await getCanvasBox();
+    await page.mouse.move(box.x + 120, box.y + 120);
+    assert((await page.locator('#workCanvas').evaluate(canvas => canvas.style.cursor)) === 'pointer', 'selectable dungeon segment should use pointer cursor');
     await clickOnCanvas(120, 120); // inside the Throne Room stroke
     const nameVal = await page.inputValue('#dungeonSegmentName');
     assert(nameVal === 'Throne Room', 'expected clicking the painted area to re-select Throne Room, got "' + nameVal + '"');
+    assert(await page.isVisible('#dungeonTooltip'), 'clicking a dungeon segment should show its description tooltip');
+    const tooltipText = await page.textContent('#dungeonTooltip');
+    assert(tooltipText.includes('#1 Throne Room') && tooltipText.includes('Trapdoor'), 'tooltip should show number, name, and description: ' + tooltipText);
+    const selected = await captureRenderedSurface(page, '#workCanvas');
+    const { json: after } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    const strokesAfter = after.slides[0].dungeonSegments.find(segment => segment.name === 'Throne Room').strokes.length;
+    assert(strokesAfter === strokesBefore, 'Select tool added a dungeon stroke');
+    await clickOnCanvas(390, 290);
+    const unselected = await captureRenderedSurface(page, '#workCanvas');
+    assertSurfacesDiffer(selected, unselected, 'dungeon selection glow did not change control pixels');
+    await clickOnCanvas(120, 120); // restore selection for Escape/delete tests
   });
   await test('Escape deselects without deleting', async () => {
     const { json: before } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     await page.keyboard.press('Escape');
     const panelHidden = !(await page.isVisible('#dungeonNotesPanel'));
     assert(panelHidden, 'expected notes panel hidden after Escape');
+    assert(!(await page.isVisible('#dungeonTooltip')), 'expected dungeon tooltip hidden after Escape');
     const { json: after } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     assert(before.slides[0].dungeonSegments.length === after.slides[0].dungeonSegments.length, 'Escape should not delete anything');
   });
@@ -816,6 +1087,16 @@ async function main() {
     const ftVal = await page.inputValue('#aoeFt');
     const circleActive = (await page.getAttribute('#aoeCircleBtn', 'class')).includes('active');
     assert(ftVal === '3' && circleActive, 'inspector should reflect the selected 3ft circle, got ft=' + ftVal + ' circleActive=' + circleActive);
+  });
+  await test('selected AoE shapes glow and shape bodies use a grab cursor', async () => {
+    const selected = await captureRenderedSurface(page, '#workCanvas');
+    const box = await getCanvasBox();
+    await page.mouse.move(box.x + 100, box.y + 90);
+    assert((await page.locator('#workCanvas').evaluate(canvas => canvas.style.cursor)) === 'grab', 'AoE body should use grab cursor');
+    await clickOnCanvas(20, 280);
+    const unselected = await captureRenderedSurface(page, '#workCanvas');
+    assertSurfacesDiffer(selected, unselected, 'AoE selection glow did not change control pixels');
+    await clickOnCanvas(100, 90);
   });
   await test('editing ft while selected updates that specific shape only', async () => {
     await page.fill('#aoeFt', '5');

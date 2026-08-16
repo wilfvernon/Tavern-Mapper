@@ -1,5 +1,6 @@
 import { gridMultiplesInRange } from '../core/geometry.mjs';
 import { computeAoeGeometry, rotationHandlePoint } from '../features/aoe.mjs';
+import { dungeonLabelLayout } from '../features/dungeon.mjs';
 
 function drawAoeGeometry(context, geometry, color, transform, scale, dashed) {
   context.save();
@@ -30,6 +31,13 @@ export function drawControlAoe(context, slide, selectedShapeId, pixelsPerFoot) {
   const identity = (x, y) => [x, y];
   slide.aoeShapes.forEach((shape) => {
     const geometry = computeAoeGeometry(shape, pixelsPerFoot);
+    if (shape.id === selectedShapeId) {
+      context.save();
+      context.shadowColor = '#b8c7ff';
+      context.shadowBlur = 18;
+      drawAoeGeometry(context, geometry, '#b8c7ff', identity, 1, false);
+      context.restore();
+    }
     drawAoeGeometry(context, geometry, shape.color, identity, 1, shape.visible === false);
     if (shape.id !== selectedShapeId) return;
 
@@ -189,12 +197,13 @@ export function drawMarkerShape(context, shape, centerX, centerY, radius, color)
 
 export function drawMarkers(context, markers, selectedMarkerId) {
   markers.forEach((marker) => {
-    const radius = 12;
+    const radius = marker.size || 12;
     if (marker.id === selectedMarkerId) {
       context.save();
-      context.strokeStyle = '#7c9cff';
-      context.lineWidth = 2;
-      context.setLineDash([4, 3]);
+      context.strokeStyle = '#b8c7ff';
+      context.shadowColor = '#b8c7ff';
+      context.shadowBlur = 18;
+      context.lineWidth = 5;
       context.beginPath();
       context.arc(marker.x, marker.y, radius + 7, 0, Math.PI * 2);
       context.stroke();
@@ -214,43 +223,115 @@ export function drawMarkers(context, markers, selectedMarkerId) {
   });
 }
 
-export function drawDungeon(context, segments, activeSegmentId) {
+export function drawDisplayMarkers(context, markers, camera, x, y, width, height, scale) {
+  const visibleMarkers = markers.filter(marker => marker.visible === true);
+  if (!visibleMarkers.length) return;
+  context.save();
+  context.beginPath();
+  context.rect(x, y, width, height);
+  context.clip();
+  context.translate(x, y);
+  context.scale(scale, scale);
+  context.translate(-camera.x, -camera.y);
+  drawMarkers(context, visibleMarkers, null);
+  context.restore();
+}
+
+const dungeonMaskByContext = new WeakMap();
+
+function getDungeonMask(context) {
+  let buffers = dungeonMaskByContext.get(context);
+  if (!buffers) {
+    buffers = {
+      mask: context.canvas.ownerDocument.createElement('canvas'),
+      glow: context.canvas.ownerDocument.createElement('canvas'),
+    };
+    dungeonMaskByContext.set(context, buffers);
+  }
+  for (const buffer of Object.values(buffers)) {
+    if (buffer.width !== context.canvas.width || buffer.height !== context.canvas.height) {
+      buffer.width = context.canvas.width;
+      buffer.height = context.canvas.height;
+    }
+  }
+  return buffers;
+}
+
+export function drawDungeon(context, segments, activeSegmentId, mapWidth, mapHeight) {
+  const { mask, glow } = getDungeonMask(context);
+  const maskContext = mask.getContext('2d');
+  const glowContext = glow.getContext('2d');
+  const scale = mask.width / mapWidth;
+
   segments.forEach((segment) => {
     const active = segment.id === activeSegmentId;
-    context.save();
-    context.globalAlpha = active ? 0.45 : 0.28;
-    context.strokeStyle = segment.color;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
+    maskContext.clearRect(0, 0, mask.width, mask.height);
+    maskContext.save();
+    maskContext.scale(scale, scale);
+    maskContext.strokeStyle = segment.color;
+    maskContext.fillStyle = segment.color;
+    maskContext.lineCap = 'round';
+    maskContext.lineJoin = 'round';
     segment.strokes.forEach((stroke) => {
       if (!stroke.points.length) return;
-      context.lineWidth = stroke.brushSize;
-      context.beginPath();
+      maskContext.lineWidth = stroke.brushSize;
+      maskContext.beginPath();
       if (stroke.points.length === 1) {
-        context.arc(stroke.points[0].x, stroke.points[0].y, stroke.brushSize / 2, 0, Math.PI * 2);
-        context.fillStyle = segment.color;
-        context.fill();
+        maskContext.arc(stroke.points[0].x, stroke.points[0].y, stroke.brushSize / 2, 0, Math.PI * 2);
+        maskContext.fill();
       } else {
-        context.moveTo(stroke.points[0].x, stroke.points[0].y);
-        stroke.points.forEach(point => context.lineTo(point.x, point.y));
-        context.stroke();
+        maskContext.moveTo(stroke.points[0].x, stroke.points[0].y);
+        stroke.points.forEach(point => maskContext.lineTo(point.x, point.y));
+        maskContext.stroke();
       }
     });
+    maskContext.restore();
+
+    if (active) {
+      glowContext.clearRect(0, 0, glow.width, glow.height);
+      glowContext.save();
+      for (const radius of [4, 8, 12]) {
+        for (let index = 0; index < 16; index++) {
+          const angle = index / 16 * Math.PI * 2;
+          glowContext.globalAlpha = radius === 12 ? 0.18 : 0.28;
+          glowContext.drawImage(mask, Math.cos(angle) * radius, Math.sin(angle) * radius);
+        }
+      }
+      glowContext.globalAlpha = 1;
+      glowContext.globalCompositeOperation = 'source-in';
+      glowContext.fillStyle = '#b8c7ff';
+      glowContext.fillRect(0, 0, glow.width, glow.height);
+      glowContext.globalCompositeOperation = 'destination-out';
+      glowContext.drawImage(mask, 0, 0);
+      glowContext.restore();
+
+      context.save();
+      context.resetTransform();
+      context.globalAlpha = 0.9;
+      context.drawImage(glow, 0, 0);
+      context.restore();
+    }
+
+    context.save();
+    context.resetTransform();
+    context.globalAlpha = active ? 0.45 : 0.28;
+    context.drawImage(mask, 0, 0);
     context.restore();
 
-    if (!active) return;
-    context.save();
-    context.globalAlpha = 0.9;
-    context.strokeStyle = segment.color;
-    context.lineWidth = 2;
-    segment.strokes.forEach((stroke) => {
-      if (stroke.points.length < 2) return;
-      context.beginPath();
-      context.moveTo(stroke.points[0].x, stroke.points[0].y);
-      stroke.points.forEach(point => context.lineTo(point.x, point.y));
-      context.stroke();
-    });
-    context.restore();
+    const label = dungeonLabelLayout(segment);
+    if (label) {
+      context.save();
+      context.font = `700 ${label.fontSize}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.lineJoin = 'round';
+      context.lineWidth = Math.max(2, label.fontSize * 0.22);
+      context.strokeStyle = 'rgba(10,11,14,0.9)';
+      context.strokeText(label.label, label.x, label.y, Math.max(1, label.width - 8));
+      context.fillStyle = '#ffffff';
+      context.fillText(label.label, label.x, label.y, Math.max(1, label.width - 8));
+      context.restore();
+    }
   });
 }
 
@@ -278,4 +359,26 @@ export function paintFogStroke(context, startX, startY, endX, endY, brushSize, r
     context.arc(x, y, radius, 0, Math.PI * 2);
     context.fill();
   }
+}
+
+export function applyFogAction(context, action, width, height) {
+  if (action.type === 'cover') {
+    context.globalCompositeOperation = 'source-over';
+    context.fillStyle = '#000000';
+    context.fillRect(0, 0, width, height);
+    return;
+  }
+  if (action.type === 'clear') {
+    context.clearRect(0, 0, width, height);
+    return;
+  }
+  if (action.type !== 'stroke' || !action.points.length) return;
+
+  const [first, ...rest] = action.points;
+  paintFogStroke(context, first.x, first.y, first.x, first.y, action.brushSize, action.revealing, action.softEdge);
+  let previous = first;
+  rest.forEach((point) => {
+    paintFogStroke(context, previous.x, previous.y, point.x, point.y, action.brushSize, action.revealing, action.softEdge);
+    previous = point;
+  });
 }

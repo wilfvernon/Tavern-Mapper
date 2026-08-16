@@ -8,12 +8,13 @@ import {
   pointInConvexPoly,
 } from '../src/core/geometry.mjs';
 import { createAutosaveScheduler } from '../src/core/autosave.mjs';
+import { constrainedMapSize, MAX_MAP_DIMENSION } from '../src/core/map-limits.mjs';
 import { pushBounded, snapshotAoe, snapshotCamera, snapshotGrid } from '../src/core/undo.mjs';
 import { createDisplayHtml } from '../src/display/window-manager.mjs';
 import { computeAoeGeometry, rotationHandlePoint } from '../src/features/aoe.mjs';
 import { applyCameraDrag, cameraCursorFor, hitTestCamera, zoomCameraAt } from '../src/features/camera.mjs';
 import { rollDice } from '../src/features/dice.mjs';
-import { hitTestDungeon } from '../src/features/dungeon.mjs';
+import { dungeonLabelLayout, hitTestDungeon, nextDungeonNumber } from '../src/features/dungeon.mjs';
 import { computeHitPoints, sortCombatants } from '../src/features/initiative.mjs';
 import { updateRecentColors } from '../src/ui/color-picker.mjs';
 import { escapeHtml } from '../src/ui/escape-html.mjs';
@@ -119,6 +120,22 @@ test('dungeon hit testing selects strokes by brush radius and topmost order', ()
   assert.equal(hitTestDungeon([lower], 10, 20), null);
 });
 
+test('dungeon numbering is stable and labels fit the largest painted component', () => {
+  assert.equal(nextDungeonNumber([{ number: 1 }, { number: 4 }]), 5);
+  const layout = dungeonLabelLayout({
+    number: 3,
+    name: 'Library',
+    strokes: [
+      { brushSize: 20, points: [{ x: 10, y: 10 }] },
+      { brushSize: 40, points: [{ x: 100, y: 100 }, { x: 180, y: 100 }] },
+    ],
+  });
+  assert.equal(layout.label, '#3 Library');
+  assert.equal(layout.x, 140);
+  assert.equal(layout.y, 100);
+  assert(layout.fontSize >= 9 && layout.fontSize <= 18);
+});
+
 test('undo snapshots are detached and histories remain bounded', () => {
   const camera = { x: 1, y: 2, w: 3, h: 4 };
   assert.deepEqual(snapshotCamera(camera), camera);
@@ -134,4 +151,10 @@ test('undo snapshots are detached and histories remain bounded', () => {
   pushBounded(history, 2, 2);
   pushBounded(history, 3, 2);
   assert.deepEqual(history, [2, 3]);
+});
+
+test('map dimensions preserve aspect ratio under the 6144px cap', () => {
+  assert.equal(MAX_MAP_DIMENSION, 6144);
+  assert.deepEqual(constrainedMapSize(4096, 2048), { width: 4096, height: 2048, scaled: false });
+  assert.deepEqual(constrainedMapSize(8192, 4096), { width: 6144, height: 3072, scaled: true });
 });

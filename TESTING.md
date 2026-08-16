@@ -6,11 +6,16 @@ The end-to-end suite treats rendered browser pixels as the public contract. It d
 
 | Contract | Coverage |
 |---|---|
-| Map loading, switching, 2400px downscaling | End-to-end |
+| Map loading, switching, 6144px downscaling, bounded control preview | End-to-end |
 | Fog painting, opacity separation, undo | End-to-end framebuffer assertions |
 | Grid state and per-map isolation | End-to-end |
-| Marker and dungeon GM-only display exclusion | Before/after display framebuffer equality |
-| Camera state, controls, and undo | End-to-end |
+| Marker opt-in display, hidden-marker privacy, and dungeon display exclusion | Before/after display framebuffer assertions |
+| Marker/AoE/dungeon selection glow and interaction cursors | End-to-end framebuffer and cursor assertions |
+| Dungeon flat-opacity overlap and canvas-boundary stroke termination | Isolated end-to-end framebuffer/state assertions |
+| Dungeon numbering/label layout/tooltips and marker size defaults/editing/persistence | Unit and end-to-end assertions |
+| Accessible names/states, keyboard rows/resize/tabs, live status, narrow layout, touch pointer input | End-to-end assertions |
+| Camera state, dimmed viewport, direct zoom/readout, center/fit, pointer controls, and undo | End-to-end framebuffer/state assertions |
+| Inline map rename, keyboard map switching, and session-name persistence | End-to-end |
 | AoE geometry, editing, visibility, calibration | Unit and end-to-end framebuffer assertions |
 | Display DPR sizing | End-to-end at DPR 2 |
 | Session export/import and malformed data | End-to-end |

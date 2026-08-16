@@ -7,9 +7,13 @@ export function createSharedColorPicker({ documentRef = document, recentLimit = 
   let recentColors = [];
   const registry = [];
 
-  function makeSwatch(hex, onPick) {
+  function makeSwatch(hex, onPick, accessibleName) {
     const button = documentRef.createElement('button');
+    button.type = 'button';
     button.dataset.color = hex;
+    button.setAttribute('aria-label', `${accessibleName} ${hex}`);
+    button.setAttribute('aria-pressed', 'false');
+    button.title = `${accessibleName} ${hex}`;
     button.style.background = hex;
     button.style.width = '28px';
     button.style.height = '28px';
@@ -26,13 +30,14 @@ export function createSharedColorPicker({ documentRef = document, recentLimit = 
       child.style.border = child.dataset.color?.toLowerCase() === target
         ? '2px solid #fff'
         : '1px solid var(--panel-border)';
+      child.setAttribute('aria-pressed', child.dataset.color?.toLowerCase() === target ? 'true' : 'false');
     });
   }
 
   function renderRecentColors() {
     registry.forEach((entry) => {
       entry.recentContainer.innerHTML = '';
-      recentColors.forEach(color => entry.recentContainer.appendChild(makeSwatch(color, entry.pick)));
+      recentColors.forEach(color => entry.recentContainer.appendChild(makeSwatch(color, entry.pick, entry.accessibleName)));
     });
   }
 
@@ -41,21 +46,21 @@ export function createSharedColorPicker({ documentRef = document, recentLimit = 
     renderRecentColors();
   }
 
-  function setup(presetContainer, recentContainer, wheelInput, presetColors, initialColor, onPick) {
+  function setup(presetContainer, recentContainer, wheelInput, presetColors, initialColor, onPick, accessibleName = 'Color') {
     function pick(hex) {
       onPick(hex);
       highlight(presetContainer, recentContainer, hex);
       wheelInput.value = hex;
     }
 
-    presetColors.forEach(color => presetContainer.appendChild(makeSwatch(color, pick)));
+    presetColors.forEach(color => presetContainer.appendChild(makeSwatch(color, pick, accessibleName)));
     wheelInput.value = initialColor;
     wheelInput.addEventListener('input', () => {
       pick(wheelInput.value);
       addRecentColor(wheelInput.value);
     });
 
-    const entry = { presetContainer, recentContainer, pick };
+    const entry = { presetContainer, recentContainer, pick, accessibleName };
     registry.push(entry);
     highlight(presetContainer, recentContainer, initialColor);
     return entry;

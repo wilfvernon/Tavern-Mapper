@@ -4,7 +4,7 @@ A single self-contained HTML file for running fog-of-war, area-of-effect templat
 
 No install, no server, no internet connection, no account. Everything runs client-side in your browser from one `.html` file.
 
-This document has two parts: **Part 1** is the complete as-built scope, so it's clear what actually exists today. **Part 2** is a proposal for restructuring how the app is built — not what it does — because the file has grown to the point where that's worth a real decision rather than continuing by default.
+This document has two parts: **Part 1** describes the current application behavior. **Part 2** describes how the modular source is built and tested while preserving the single-file release.
 
 ---
 
@@ -34,9 +34,10 @@ Clicking a category shows only its own tabs and remembers which one you were las
 - Add any number of map images via the file picker (multi-select) or by dragging files onto the map area.
 - Each map keeps its own independent fog, markers, camera framing, grid, calibration, AoE shapes, and dungeon segments — switching away and back preserves everything exactly as left.
 - Reorder maps by dragging their thumbnails; Prev/Next buttons cycle through them.
+- Rename maps inline from the slideshow; names persist in exported and autosaved sessions.
 - Removing a map requires confirmation — there is no undo for it.
 - New maps default to fully revealed fog and no grid.
-- Uploaded images are downscaled to a maximum of 2400px on the longest side at load time (see Part 2 for why this cap exists and what changing it costs today).
+- Uploaded images are downscaled to a maximum of 6144px on the longest side. The always-full-map control view uses a bounded 2400px preview, while map coordinates, fog data, saved images, and display-camera crops retain the full imported resolution.
 
 ## Fog
 
@@ -44,14 +45,19 @@ Clicking a category shows only its own tabs and remembers which one you were las
 - "Cover entire map" / "Reveal entire map" for instant resets.
 - A control-only opacity slider lets you see through fog to align strokes against the map underneath — the display screen always renders fog fully opaque regardless of this setting.
 
-## Markers (GM-only — never shown on the display)
+## Markers
 
 - 7 hand-drawn shapes (not emoji, so they can take any color): X, circle, square, triangle, star, skull, treasure chest.
-- Click empty space to drop one and label it; click an existing marker to select it (drag to move); double-click to rename (clear text to delete); right-click to delete instantly; Delete/Backspace or a sidebar button removes the selected one; Escape deselects.
+- Click empty space to drop one and label it; click an existing marker to select it (drag to move); edit its persistent name field or double-click to focus that field; right-click to delete instantly; Delete/Backspace or a sidebar button removes the selected one; Escape deselects.
+- A marker can optionally be shown on the display. The toggle sets the default for newly created markers when nothing is selected, and edits the selected marker otherwise. Existing and legacy markers default hidden.
+- Marker size works the same way: the slider sets the creation default when nothing is selected and resizes the selected marker otherwise. Size is saved per marker and applies on both control and display screens.
+- Hovering a marker uses a grab cursor, dragging uses grabbing, and the selected marker glows.
 
 ## Camera (what the display screen frames)
 
-- A draggable, resizable viewfinder rectangle on your full map view — drag inside to pan, drag a corner to zoom (aspect-locked), scroll/pinch to zoom at the cursor.
+- The display viewport is a bright labeled rectangle, with the map outside it dimmed so framing is immediately visible.
+- Drag inside to pan, drag a corner to resize (aspect-locked), click outside to recenter, or scroll/pinch to zoom at the cursor.
+- A direct Display Zoom slider shows the current percentage, with grouped zoom out, fit-map, zoom-in, and center-view commands.
 - Standard resize cursors on the corners, a move cursor inside the box, reset to default crosshair outside it and when leaving the tab.
 - Your own editing view always shows the full map, unaffected by the camera; it only controls what the display shows.
 
@@ -83,10 +89,15 @@ This determines how many pixels equal a foot on a given map, which is what every
 ## Dungeon Mode (GM-only — never shown on the display)
 
 - Paint freehand segments with a brush, similar to fog, but each segment is a distinct, individually selectable entity rather than a shared mask (hit-testing uses real point-to-line-segment geometry).
-- Click an existing segment to select it and keep painting more area into it, or edit its name and a free-text notes field.
+- Paint is the default tool. It creates a segment or adds strokes to the active one.
+- Select mode clicks an existing segment without painting, allowing its name, notes, or color to be edited. Selectable segments use a pointer cursor.
+- Segments receive stable per-map numbers. The control canvas fits `#number + name` into the largest painted component where space allows, falling back to the number for very small areas.
+- Clicking a segment in Select mode opens a control-only tooltip with its number, name, and description/notes.
 - "Start new segment" clears the active one so the next stroke begins something fresh; Escape deselects.
 - Deleting a segment requires confirmation, since it can carry substantial written notes.
-- Rendered as a translucent colored layer beneath the grid and AoE, with a brighter outline on whichever segment is active.
+- Rendered as a translucent colored layer beneath the grid and AoE, with a glow on whichever segment is active.
+- Paint opacity is flat across each segment: retracing or crossing the same area does not make it darker. A stroke ends when the pointer leaves the map, so returning cannot draw a connecting line across the canvas.
+- Selected markers, AoE shapes, and dungeon segments all use a consistent control-screen glow.
 
 ## Dice
 
@@ -132,7 +143,7 @@ Five independent undo histories per map — Fog, Markers, Camera, Grid, and a co
 | Grid | Yes | Yes |
 | AoE shapes | Yes (hidden ones shown dashed) | Only shapes marked visible |
 | Dungeon segments | Yes | Never |
-| Markers | Yes | Never |
+| Markers | Yes | Only markers marked visible |
 | Initiative AC/HP | Yes | Never (turn order/names only, if shown) |
 
 ## Explicitly out of scope
@@ -143,98 +154,95 @@ Five independent undo histories per map — Fog, Markers, Camera, Grid, and a co
 
 ---
 
-# Part 2 — Proposal: a modular refactor
+# Part 2 — Architecture and development
 
-> **Implementation status:** The modular build is now the source of truth. The complete UI template and stylesheet live in `src/app.html` and `src/styles.css`; orchestration lives in `src/main.js`; core state utilities, feature math, display lifecycle, shared UI, and the Canvas 2D renderer have compiler-enforced module boundaries under `src/`. `npm run build` bundles those sources back into the standalone `tavern-mapper.html` described in Part 1 and rejects external runtime references.
->
-> `tavern-mapper_6.html` is retained as the pre-migration reference. Do not edit it for new work or run the guarded `migrate:legacy` command during normal development, because extraction intentionally replaces the modular source files.
+## Distribution contract
 
-The repository has three deliberately different roles:
+The release is still exactly one file: `tavern-mapper.html`. It contains all markup, CSS, application JavaScript, modules, and display-window code. End users can copy or download that file alone and open it directly; they do not need Node.js, npm, a server, or the source tree.
 
-- `src/` is the only authored application source.
-- `tavern-mapper.html` is generated by `npm run build` and is the single-file release users open directly.
-- `tavern-mapper_6.html` is a read-only historical snapshot from before modularization. It is not built, tested, or shipped as the current app.
+The build rejects external script, stylesheet, module, and network references so this offline contract cannot be broken accidentally.
 
-## Why this is worth deciding now, not later
+## Source of truth
 
-The file has grown from 2,057 lines / 63 functions / 104 state variables at the last complexity checkpoint to **3,461 lines / 96 functions / 193 state variables** today — roughly 70–85% growth across every dimension, driven by real features (AoE with rotation and calibration math, the dice pool, the HP log, category navigation, all of Dungeon Mode, the shared color picker). None of it was frivolous, but it's all still living in one flat JavaScript closure with no module boundaries.
+- `src/` is the authored application source.
+- `tavern-mapper.html` is generated by `npm run build`; do not edit it by hand.
+- `tavern-mapper_6.html` is the untouched pre-refactor reference. It is not current source or a second release.
+- `npm run migrate:legacy` is a guarded recovery command that overwrites modular source from the historical file. It is not part of normal development.
 
-Concretely, this has already cost real time and produced real bugs in this project specifically:
+## Source layout
 
-- **Cross-feature state bugs that module boundaries would have prevented structurally**, not just caught by testing — the zoom-lock calibration reference getting silently overwritten by an unrelated "show reference square" toggle; the AoE shape-type buttons retroactively mutating whatever shape happened to be selected. Both were real, both shipped once before being caught.
-- **Two accidental content-deletions during editing** — a truncated function, a deleted import — both from text-replacement operations on a file this size, both caught only because of a verification habit, not because anything in the file's structure limits the blast radius of a mistake.
-- **A 1,390-line test suite that's become load-bearing** — necessary, and a good thing to have, but its size is itself evidence that "read the file and reason about it" stopped being sufficient a while ago.
-
-## What I'm proposing
-
-Not a rewrite of what the app does — a change to how it's built, keeping the single-file, no-install distributable exactly as-is for you as the end user.
-
-**Author in modules, bundle to one file at build time.** This is the same approach TiddlyWiki uses for the same reason: the *distributed* artifact is one HTML file, but the *source* is organized, with real boundaries a compiler enforces rather than boundaries that exist only as a convention I have to remember to respect.
-
-Proposed module split (illustrative, not final):
-
-```
+```text
 src/
+  app.html                     control-window markup
+  styles.css                   complete authored stylesheet
+  main.js                      stateful orchestration and event wiring
   core/
-    state.js          — slide data model, session (de)serialization
-    canvas-utils.js    — shared geometry (point-in-poly, distance-to-segment, etc.)
-    undo.js            — generic snapshot/undo machinery, parameterized per-mode
-  features/
-    fog.js
-    markers.js
-    camera.js
-    grid.js
-    calibrate.js       — including the zoom-lock math specifically
-    aoe.js
-    dungeon.js
-    dice.js
-    initiative.js
-  ui/
-    tabs.js             — category navigation
-    color-picker.js      — the shared picker component
-    sidebar.js
+    autosave.mjs               IndexedDB storage and debounce policy
+    geometry.mjs               shared geometry calculations
+    map-limits.mjs             6144px map and 2400px preview limits
+    undo.mjs                   immutable snapshots and bounded histories
   display/
-    display-window.js    — composite rendering, self-healing, DPR handling
-  main.js                — wiring, boot sequence
+    window-manager.mjs         DPR-aware popup and self-healing lifecycle
+  features/
+    aoe.mjs                    AoE geometry
+    camera.mjs                 camera hit-testing, drag, and zoom math
+    dice.mjs                   dice primitives
+    dungeon.mjs                dungeon hit-testing, numbering, and labels
+    initiative.mjs             initiative sorting and HP replay
+  renderers/
+    canvas2d.mjs               current map/fog/grid/marker/AoE/dungeon renderer
+  ui/
+    color-picker.mjs           shared picker and recent-color registry
+    escape-html.mjs            display-output escaping
 ```
 
-A build step (e.g. esbuild, which is fast and simple to configure) concatenates and inlines everything into the single `tavern-mapper.html` you already have, including the display-window template as a string. You'd still get one file to double-click — the module split is invisible to you as the user.
+`scripts/build.mjs` bundles these modules with esbuild and assembles the standalone HTML artifact.
 
-## Concrete benefits, including the resolution question
-
-This directly changes the calculus on the earlier resolution discussion, in a few specific ways:
-
-- **Autosave currently re-encodes every loaded map's fog on every write cycle, not just the one you're editing** — a known inefficiency I flagged earlier and never fixed. With real module boundaries around session state, adding per-slide dirty-tracking (only re-encode a slide whose fog actually changed) becomes a contained, low-risk change instead of a cross-cutting edit through a 3,000-line file. This alone removes the part of the resolution cost that scales with how many maps you have open, independent of the cap itself.
-- **The live per-frame redraw cost — the part of the earlier benchmark that actually matters most for how the app feels to use — becomes tractable to optimize with clean layer ownership.** Right now, `redraw()` does a full-canvas blit every mousemove. With isolated rendering modules, techniques like dirty-rect tracking (only repaint the region that changed) or moving to `OffscreenCanvas` + a Web Worker for the expensive parts become realistic to implement correctly, rather than risky changes to a function everything else already depends on.
-- **Encoding work (PNG/JPEG) could move off the main thread into a Web Worker**, which is the single biggest lever on the "would raising the resolution cap cause noticeable UI hitches" question — it directly targets the 300ms one-time map-load pause and the periodic autosave cost measured earlier. This is meaningfully harder to retrofit safely into the current single-closure structure than into isolated modules.
-- **Together, these three changes would make raising the map resolution cap (2400px today) substantially cheaper than it is now** — not free, but no longer carrying the main-thread-blocking costs that were the real concern in that earlier conversation. Whether to actually raise it would still be your call, but the refactor is what removes the strongest argument against it.
-- **A real type-checking pass (TypeScript, even loosely applied) would have caught both of the specific bug classes described above** at write-time rather than requiring me to think to test for them — the calibration-reference stomping and the shape-type retroactive-mutation bug were both "this function assumed a shape of data that didn't hold in this one call site" bugs, exactly what a type system is good at catching mechanically.
-- **Smaller, isolated files make my own edits meaningfully safer** — a text-replacement mistake in a 150-line `fog.js` has an obviously smaller blast radius than the same mistake in a 3,000-line closure, and is much easier to verify correctly.
-
-## What this costs
-
-- **A real build step** — `npm run build` or equivalent, rather than editing the shipped HTML directly. Development iteration adds a compile step; the end result you download is unaffected.
-- **Genuine restructuring effort** — pulling ~3,000 lines apart into ~15 modules along the boundaries above, then re-verifying the *entire* existing test suite passes against the rebuilt output before trusting it. This is not a quick pass; it's comparable in scope to one of the larger feature builds already done this session (Dungeon Mode, say), not a small cleanup.
-- **Some ongoing discipline** — module boundaries only help if respected going forward; it's possible to write bad, tightly-coupled modules just as it's possible to write bad flat code. The payoff is that the *tooling* now makes violations visible (a module reaching into another's private state has to do so explicitly, through an export) rather than silent.
-
-## My recommendation
-
-Do this before the next subsystem-sized feature, not after. Dungeon Mode and the dice pool were each roughly Grid/AoE-sized additions, and I already flagged after the *first* complexity check that there was room for "one or two more" before a restructure became the right call — we've had more than that since. If there's another feature of similar size coming, I'd build the module boundaries first and add the feature into them, rather than adding a tenth subsystem to the flat closure and refactoring around it afterward.
-
-If the app is close to feature-complete for what you actually need, the honest alternative is: leave it as-is, keep leaning on the test suite the way we have been, and accept that future changes carry slightly more risk than they would in a modular version. That's a legitimate choice too — it just shouldn't be the default by omission.
-
-## Development workflow
-
-The renderer-independent coverage contract and the additional gates required before WebGL/WebGPU becomes the default are documented in [TESTING.md](TESTING.md).
+## Build and run
 
 ```sh
 npm install
 npm run build
-npm run test:unit
-npm test
 ```
 
-- `npm run build` bundles the authored modules and inlines the CSS, markup, and JavaScript into `tavern-mapper.html`. The result still opens directly from disk without a server.
-- `npm run test:unit` checks the pure module contracts with Node's built-in test runner.
-- `npm test` rebuilds the artifact and runs the complete Playwright behavior suite against the real standalone file.
-- `npm run check` runs the build, unit tests, and browser suite in sequence when Chromium's Linux runtime dependencies are available.
+Then open `tavern-mapper.html` directly. On this VS Code/dev-container setup:
+
+```sh
+"$BROWSER" tavern-mapper.html
+```
+
+## Validation
+
+```sh
+npm run test:unit   # 14 direct module contracts
+npm test            # rebuild + 127 sequential Playwright behavior tests
+npm run check       # build + unit + browser suites
+```
+
+The Playwright suite is intentionally sequential and stateful. Do not reorder or isolate existing cases without tracing their setup dependencies. New scenarios should use an isolated page where practical or restore map, tab, selection, visibility, and tool state afterward.
+
+Renderer-independent coverage and the gates required before WebGL/WebGPU could become the default are documented in [TESTING.md](TESTING.md).
+
+The measured accessibility, keyboard, responsive-layout, feedback, and interaction audit is documented in [UI_UX_AUDIT.md](UI_UX_AUDIT.md). Its recommendations use native HTML, CSS, and JavaScript only.
+
+## High-resolution Canvas path
+
+The current maximum map dimension is 6144px. The private control view uses a bounded 2400px backing canvas while logical map coordinates, fog, sessions, and display-camera crops retain full resolution.
+
+The 6K work also:
+
+- Retains original compressed image data for in-cap imports.
+- Caches fog serialization until fog changes.
+- Stores fog undo as replayable actions instead of full-resolution canvas copies.
+- Coalesces high-frequency pointer redraws.
+- Keeps the session JSON shape backward compatible.
+
+Run the reusable benchmark with:
+
+```sh
+npm run benchmark:6k
+```
+
+It writes `benchmark-6k.json` with import, fog, camera, display, autosave, export, restore, two-map, and memory-floor measurements. Container timings are useful for regressions; release decisions should also use the intended laptop/TV hardware.
+
+The conditional WebGL2/tiling plan is documented separately in [RENDERER_PROPOSAL.md](RENDERER_PROPOSAL.md). Tiling is not part of the current implementation and should be considered only if requirements move materially beyond the tested 6K Canvas path.
