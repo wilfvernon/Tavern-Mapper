@@ -19,7 +19,7 @@ Implemented in the first remediation pass:
 - Stacked narrow-screen layout and coarse-pointer target sizing.
 - Tooltip semantics and `aria-describedby` linkage for selected dungeon list rows.
 
-Current automated verification: 14 module contracts and 127 browser behavior tests.
+Current test inventory: 15 module contracts and 134 browser behavior cases. The latest targeted changes were build/unit/smoke checked without rerunning the full browser suite, by request.
 
 Remaining deeper opportunities:
 

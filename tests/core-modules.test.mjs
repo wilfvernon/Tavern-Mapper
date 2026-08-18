@@ -12,10 +12,10 @@ import { constrainedMapSize, MAX_MAP_DIMENSION } from '../src/core/map-limits.mj
 import { pushBounded, snapshotAoe, snapshotCamera, snapshotGrid } from '../src/core/undo.mjs';
 import { createDisplayHtml } from '../src/display/window-manager.mjs';
 import { computeAoeGeometry, rotationHandlePoint } from '../src/features/aoe.mjs';
-import { applyCameraDrag, cameraCursorFor, hitTestCamera, zoomCameraAt } from '../src/features/camera.mjs';
+import { applyCameraDrag, cameraCursorFor, fitCameraToAspect, hitTestCamera, zoomCameraAt } from '../src/features/camera.mjs';
 import { rollDice } from '../src/features/dice.mjs';
 import { dungeonLabelLayout, hitTestDungeon, nextDungeonNumber } from '../src/features/dungeon.mjs';
-import { computeHitPoints, sortCombatants } from '../src/features/initiative.mjs';
+import { computeHitPoints, sortCombatants, sortCombatantsByScore } from '../src/features/initiative.mjs';
 import { updateRecentColors } from '../src/ui/color-picker.mjs';
 import { escapeHtml } from '../src/ui/escape-html.mjs';
 
@@ -56,6 +56,16 @@ test('initiative sorting and HP log replay preserve app semantics', () => {
   ] }), 16);
 });
 
+test('manual initiative order overrides score after initial placement', () => {
+  const combatants = [
+    { name: 'High', score: 20, order: 2 },
+    { name: 'Manual First', score: 1, order: 0 },
+    { name: 'Middle', score: 10, order: 1 },
+  ];
+  assert.deepEqual(sortCombatants(combatants).map(({ name }) => name), ['Manual First', 'Middle', 'High']);
+  assert.deepEqual(sortCombatantsByScore(combatants).map(({ name }) => name), ['High', 'Middle', 'Manual First']);
+});
+
 test('display text escaping covers HTML-significant characters', () => {
   assert.equal(escapeHtml('<Tom & Jane>'), '&lt;Tom &amp; Jane&gt;');
 });
@@ -68,14 +78,20 @@ test('recent colors are shared, deduplicated, normalized, and capped', () => {
 });
 
 test('camera operations preserve aspect ratio, bounds, and cursor semantics', () => {
-  const camera = { x: 0, y: 0, w: 400, h: 300 };
+  const camera = fitCameraToAspect(400, 300);
+  assert.deepEqual(camera, { x: 0, y: 37.5, w: 400, h: 225 });
   zoomCameraAt(camera, 400, 300, 200, 150, 0.5);
-  assert.deepEqual(camera, { x: 100, y: 75, w: 200, h: 150 });
+  assert.deepEqual(camera, { x: 100, y: 93.75, w: 200, h: 112.5 });
   assert.equal(hitTestCamera(camera, 200, 150), 'move');
-  assert.equal(hitTestCamera(camera, 100, 75), 'nw');
+  assert.equal(hitTestCamera(camera, 100, 93.75), 'nw');
   assert.equal(cameraCursorFor('ne'), 'nesw-resize');
   applyCameraDrag(camera, 400, 300, 'move', 500, 500);
-  assert.deepEqual(camera, { x: 200, y: 150, w: 200, h: 150 });
+  assert.deepEqual(camera, { x: 200, y: 187.5, w: 200, h: 112.5 });
+  applyCameraDrag(camera, 400, 300, 'nw', 50, 50);
+  assert.deepEqual(camera, { x: 250, y: 215.625, w: 150, h: 84.375 });
+  assert.equal(camera.w / camera.h, 16 / 9);
+  assert.deepEqual(fitCameraToAspect(300, 400), { x: 0, y: 115.625, w: 300, h: 168.75 });
+  assert.deepEqual(fitCameraToAspect(500, 200), { x: 72.22222222222223, y: 0, w: 355.55555555555554, h: 200 });
 });
 
 test('autosave scheduling debounces writes and removes empty sessions', async () => {
@@ -139,6 +155,7 @@ test('dungeon numbering is stable and labels fit the largest painted component',
 test('undo snapshots are detached and histories remain bounded', () => {
   const camera = { x: 1, y: 2, w: 3, h: 4 };
   assert.deepEqual(snapshotCamera(camera), camera);
+  assert.deepEqual(snapshotCamera(camera, '4:3', 200), { ...camera, aspect: '4:3', zoom: 200 });
   assert.deepEqual(snapshotGrid({ enabled: true, size: 50, offsetX: 1, offsetY: 2, opacity: 0.5 }), {
     enabled: true, size: 50, offsetX: 1, offsetY: 2, opacity: 0.5,
   });

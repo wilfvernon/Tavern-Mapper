@@ -126,8 +126,8 @@ function assertSurfacesDiffer(before, after, message) {
 }
 
 async function clickModeTab(name) {
-  const map = { maps: '#mapsModeBtn', fog: '#brushModeBtn', markers: '#markerModeBtn', camera: '#cameraModeBtn', grid: '#gridModeBtn', dungeon: '#dungeonModeBtn', calibrate: '#calibrateModeBtn', aoe: '#aoeModeBtn', dice: '#diceModeBtn', init: '#initModeBtn' };
-  const category = { fog: '#catMapBtn', markers: '#catMapBtn', grid: '#catMapBtn', dungeon: '#catMapBtn', camera: '#catDisplayBtn', calibrate: '#catDisplayBtn', aoe: '#catToolsBtn', dice: '#catToolsBtn', init: '#catToolsBtn' };
+  const map = { maps: '#mapsModeBtn', fog: '#brushModeBtn', draw: '#drawModeBtn', markers: '#markerModeBtn', camera: '#cameraModeBtn', grid: '#gridModeBtn', dungeon: '#dungeonModeBtn', calibrate: '#calibrateModeBtn', aoe: '#aoeModeBtn', dice: '#diceModeBtn', init: '#openInitiativeBtn' };
+  const category = { fog: '#catMapBtn', draw: '#catMapBtn', markers: '#catMapBtn', grid: '#catMapBtn', dungeon: '#catMapBtn', camera: '#catDisplayBtn', calibrate: '#catDisplayBtn', aoe: '#catToolsBtn', dice: '#catToolsBtn' };
   if (category[name]) {
     const alreadyVisible = await page.isVisible(map[name]);
     if (!alreadyVisible) await page.click(category[name]);
@@ -259,8 +259,8 @@ async function main() {
     assert(emptyVisible === true, 'empty state should be visible');
     assert(canvasVisible === false, 'canvas should be hidden with no maps loaded');
   });
-  await test('all ten mode tabs present (across categories)', async () => {
-    for (const id of ['#mapsModeBtn', '#brushModeBtn', '#markerModeBtn', '#cameraModeBtn', '#gridModeBtn', '#dungeonModeBtn', '#calibrateModeBtn', '#aoeModeBtn', '#diceModeBtn', '#initModeBtn']) {
+  await test('all ten mode tabs and the Initiative utility button are present', async () => {
+    for (const id of ['#mapsModeBtn', '#brushModeBtn', '#drawModeBtn', '#markerModeBtn', '#cameraModeBtn', '#gridModeBtn', '#dungeonModeBtn', '#calibrateModeBtn', '#aoeModeBtn', '#diceModeBtn', '#openInitiativeBtn']) {
       assert(await page.locator(id).count() === 1, id + ' missing');
     }
   });
@@ -268,6 +268,20 @@ async function main() {
     for (const id of ['#subTabsMap', '#subTabsDisplay', '#subTabsTools']) {
       assert((await page.isVisible(id)) === false, id + ' should be hidden by default');
     }
+  });
+  await test('scrollable control surfaces use the themed thin scrollbar', async () => {
+    const scrollbar = await page.locator('.sidebar-scroll').evaluate(element => ({
+      width: getComputedStyle(element, '::-webkit-scrollbar').width,
+      thumb: getComputedStyle(element, '::-webkit-scrollbar-thumb').backgroundColor,
+      track: getComputedStyle(element, '::-webkit-scrollbar-track').backgroundColor,
+      standardWidth: getComputedStyle(element).scrollbarWidth,
+      gutter: getComputedStyle(element).scrollbarGutter,
+    }));
+    assert(scrollbar.width === '7px', 'expected a narrow WebKit scrollbar, got ' + scrollbar.width);
+    assert(scrollbar.thumb !== 'rgba(0, 0, 0, 0)', 'scrollbar thumb should use the app palette');
+    assert(scrollbar.track === 'rgba(0, 0, 0, 0)', 'scrollbar track should remain unobtrusive');
+    assert(scrollbar.standardWidth === 'thin', 'expected Firefox thin scrollbar styling');
+    assert(scrollbar.gutter === 'stable', 'main scroll regions should reserve a stable gutter');
   });
   await test('category bar and sub-tab rows wrap without overflowing the sidebar', async () => {
     await page.click('#catMapBtn');
@@ -497,6 +511,64 @@ async function main() {
     assert(label === 'Undo (Fog)', 'label: ' + label);
   });
 
+  group('Freeform drawing: pen, eraser, display visibility, undo, persistence');
+  await test('drawing is private by default but visible on the control map', async () => {
+    await clickModeTab('draw');
+    assert((await page.textContent('#undoContextLabel')) === 'Undo (Draw)', 'Draw should have its own undo context');
+    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#openDisplayBtn')]);
+    await popup.waitForTimeout(300);
+    const displayBefore = await captureRenderedSurface(popup, '#displayCanvas');
+    const controlBefore = await sampleControlCanvasAlpha(100, 60);
+    await page.fill('#drawSize', '24');
+    await page.dispatchEvent('#drawSize', 'input');
+    await dragOnCanvas(70, 60, 130, 60, 8);
+    const controlAfter = await sampleControlCanvasAlpha(100, 60);
+    assert(controlAfter.r > controlBefore.r + 80, 'red drawing should change control pixels: before=' + JSON.stringify(controlBefore) + ' after=' + JSON.stringify(controlAfter));
+    const displayHidden = await captureRenderedSurface(popup, '#displayCanvas');
+    assertSurfacesEqual(displayBefore, displayHidden, 'private drawing changed display pixels');
+    await page.check('#drawVisibleToggle');
+    const displayVisible = await captureRenderedSurface(popup, '#displayCanvas');
+    assertSurfacesDiffer(displayHidden, displayVisible, 'show drawing toggle did not change display pixels');
+    await popup.close();
+  });
+  await test('eraser removes drawing and Draw undo restores it', async () => {
+    const drawn = await sampleControlCanvasAlpha(100, 60);
+    await page.click('#drawEraserBtn');
+    await page.fill('#drawSize', '40');
+    await page.dispatchEvent('#drawSize', 'input');
+    await dragOnCanvas(90, 60, 110, 60, 4);
+    const erased = await sampleControlCanvasAlpha(100, 60);
+    assert(erased.r < drawn.r - 50, 'eraser should reveal the map beneath the drawing');
+    await page.click('#undoBtn');
+    const restored = await sampleControlCanvasAlpha(100, 60);
+    assert(Math.abs(restored.r - drawn.r) <= 3, 'drawing undo should restore erased pixels');
+    await page.click('#drawPenBtn');
+  });
+  await test('clear all drawings is undoable', async () => {
+    const drawn = await sampleControlCanvasAlpha(100, 60);
+    await page.click('#clearDrawingBtn');
+    const cleared = await sampleControlCanvasAlpha(100, 60);
+    assert(cleared.r < drawn.r - 50, 'clear should remove drawing pixels');
+    await page.click('#undoBtn');
+    const restored = await sampleControlCanvasAlpha(100, 60);
+    assert(Math.abs(restored.r - drawn.r) <= 3, 'undo should restore cleared drawings');
+  });
+  await test('drawing data and display visibility persist through session load', async () => {
+    const { json, path: sessionPath } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(typeof json.slides[0].drawingDataUrl === 'string' && json.slides[0].drawingDataUrl.startsWith('data:image/png'), 'drawing PNG missing from session');
+    assert(json.slides[0].drawingVisible === true, 'drawing visibility missing from session');
+    const restorePage = await context.newPage();
+    await restorePage.goto(APP_PATH);
+    await restorePage.setInputFiles('#loadSessionInput', sessionPath);
+    await restorePage.waitForSelector('#workCanvas', { state: 'visible' });
+    const restoredPixel = await sampleRenderedPixel(restorePage, '#workCanvas', 100, 60);
+    assert(restoredPixel.r > 150, 'restored drawing should appear on control map: ' + JSON.stringify(restoredPixel));
+    await restorePage.click('#catMapBtn');
+    await restorePage.click('#drawModeBtn');
+    assert(await restorePage.isChecked('#drawVisibleToggle'), 'drawing display toggle should restore checked');
+    await restorePage.close();
+  });
+
   group('Markers: place, select, drag, rename, delete, shapes/colors');
   await test('place a marker via click (accepts label prompt)', async () => {
     await clickModeTab('markers');
@@ -625,12 +697,13 @@ async function main() {
     await page.waitForFunction(() => document.getElementById('appStatus').textContent === 'Session saved.');
   });
 
-  group('Camera: pan, zoom, fit-whole-map');
-  await test('camera defaults to full map extent', async () => {
+  group('Camera: pan, zoom, aspect presets');
+  await test('camera defaults to a centered 16:9 TV frame', async () => {
     await clickModeTab('camera');
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     const cam = json.slides[0].camera;
-    assert(cam.w === 400 && cam.h === 300, 'expected full-extent camera, got ' + JSON.stringify(cam));
+    assert(cam.w === 400 && cam.h === 225 && cam.x === 0 && cam.y === 37.5, 'expected centered 16:9 camera, got ' + JSON.stringify(cam));
+    assert(json.slides[0].cameraAspect === '16:9' && await page.inputValue('#cameraAspect') === '16:9', 'expected 16:9 as the per-map default');
   });
   await test('Zoom In button shrinks the camera viewport', async () => {
     await page.click('#zoomInBtn');
@@ -638,11 +711,29 @@ async function main() {
     const cam = json.slides[0].camera;
     assert(cam.w < 400, 'expected camera to shrink after zoom in, got w=' + cam.w);
   });
-  await test('Fit whole map restores full extent', async () => {
+  await test('Fit aspect restores the largest centered selected frame', async () => {
     await page.click('#fitFullBtn');
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     const cam = json.slides[0].camera;
-    assert(cam.w === 400 && cam.h === 300, 'expected full extent restored, got ' + JSON.stringify(cam));
+    assert(cam.w === 400 && cam.h === 225 && cam.x === 0 && cam.y === 37.5, 'expected centered 16:9 frame restored, got ' + JSON.stringify(cam));
+  });
+  await test('camera aspect presets persist per map and control later framing', async () => {
+    await page.fill('#cameraZoom', '200');
+    await page.dispatchEvent('#cameraZoom', 'input');
+    await page.selectOption('#cameraAspect', '4:3');
+    let { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    let cam = json.slides[0].camera;
+    assert(json.slides[0].cameraAspect === '4:3' && Math.abs(cam.w / cam.h - 4 / 3) < 0.001, 'expected persisted 4:3 camera framing');
+    assert(json.slides[0].cameraZoom === 200 && await page.inputValue('#cameraZoom') === '200', 'changing aspect must preserve 200% zoom');
+    await page.click('#zoomInBtn');
+    ({ json } = await captureDownloadJSON(() => page.click('#saveSessionBtn')));
+    cam = json.slides[0].camera;
+    assert(Math.abs(cam.w / cam.h - 4 / 3) < 0.001, 'zoom should preserve the selected 4:3 ratio');
+    assert(json.slides[0].cameraZoom === 250, 'Zoom In should change zoom independently to 250%');
+    await page.selectOption('#cameraAspect', '16:9');
+    assert(await page.inputValue('#cameraZoom') === '250', 'changing back to 16:9 must preserve 250% zoom');
+    await page.click('#fitFullBtn');
+    assert(await page.inputValue('#cameraZoom') === '100', 'Fit aspect should explicitly reset zoom to 100%');
   });
   await test('camera zoom slider exposes framing directly and outside area is dimmed', async () => {
     await page.fill('#cameraZoom', '200');
@@ -687,16 +778,16 @@ async function main() {
     async function cursorAt() { return page.evaluate(() => document.getElementById('workCanvas').style.cursor); }
     const box = await getCanvasBox();
 
-    await page.mouse.move(box.x + 200, box.y + 150); // full-extent camera: dead center
+    await page.mouse.move(box.x + 200, box.y + 150); // centered TV frame: dead center
     assert((await cursorAt()) === 'move', 'expected move cursor inside the camera viewport');
 
-    await page.mouse.move(box.x + 1, box.y + 1);
+    await page.mouse.move(box.x + 1, box.y + 38);
     assert((await cursorAt()) === 'nwse-resize', 'expected nwse-resize cursor near the nw corner');
-    await page.mouse.move(box.x + 399, box.y + 1);
+    await page.mouse.move(box.x + 399, box.y + 38);
     assert((await cursorAt()) === 'nesw-resize', 'expected nesw-resize cursor near the ne corner');
-    await page.mouse.move(box.x + 1, box.y + 299);
+    await page.mouse.move(box.x + 1, box.y + 262);
     assert((await cursorAt()) === 'nesw-resize', 'expected nesw-resize cursor near the sw corner');
-    await page.mouse.move(box.x + 399, box.y + 299);
+    await page.mouse.move(box.x + 399, box.y + 262);
     assert((await cursorAt()) === 'nwse-resize', 'expected nwse-resize cursor near the se corner');
 
     await page.click('#zoomInBtn');
@@ -705,7 +796,7 @@ async function main() {
     assert((await cursorAt()) === 'crosshair', 'expected default crosshair cursor outside the camera viewport');
 
     await page.click('#fitFullBtn');
-    await page.mouse.move(box.x + 1, box.y + 1);
+    await page.mouse.move(box.x + 1, box.y + 38);
     await page.mouse.down();
     await page.mouse.move(box.x + 50, box.y + 50);
     assert((await cursorAt()) === 'nwse-resize', 'expected resize cursor to persist while actively dragging a corner');
@@ -1253,7 +1344,7 @@ async function main() {
     assert(json.slides[1].aoeCalibration === 150, 'expected manual number field to set calibration to 150, got ' + json.slides[1].aoeCalibration);
     await page.click('#calibShowSquareBtn'); // hide it
   });
-  await test('unlocked calibration is unaffected by zooming', async () => {
+  await test('unlocked calibration compensates so apparent TV AoE size stays constant', async () => {
     await clickModeTab('camera');
     await page.click('#fitFullBtn');
     await clickModeTab('calibrate');
@@ -1263,24 +1354,31 @@ async function main() {
     await page.click('#zoomInBtn');
     await clickModeTab('calibrate');
     const { json: after } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
-    assert(before.slides[1].aoeCalibration === after.slides[1].aoeCalibration, 'unlocked calibration should not change when zooming, before=' + before.slides[1].aoeCalibration + ' after=' + after.slides[1].aoeCalibration);
+    const beforeControlRadius = before.slides[1].aoeCalibration;
+    const afterControlRadius = after.slides[1].aoeCalibration;
+    const beforeDisplayRadius = beforeControlRadius / before.slides[1].camera.w;
+    const afterDisplayRadius = afterControlRadius / after.slides[1].camera.w;
+    assert(afterControlRadius < beforeControlRadius, 'unlocked control geometry should shrink when zooming in');
+    assert(Math.abs(beforeDisplayRadius - afterDisplayRadius) < 0.0001, 'unlocked apparent TV AoE size should stay constant');
     await clickModeTab('camera');
     await page.click('#fitFullBtn'); // reset for the next test
     await clickModeTab('calibrate');
   });
-  await test('locking to zoom captures a reference and auto-adjusts calibration proportionally as camera width changes', async () => {
+  await test('zoom lock freezes control geometry and lets TV projection scale naturally', async () => {
     await page.check('#aoeZoomLockToggle');
     const { json: locked } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     assert(locked.slides[1].aoeZoomLock === true, 'expected lock enabled');
-    assert(locked.slides[1].aoeZoomLockRefCamW === 300, 'expected reference camW to be the full map width (300), got ' + locked.slides[1].aoeZoomLockRefCamW);
+    assert(locked.slides[1].aoeZoomLockRefCamW === 300, 'expected reference camW to match the fitted TV frame width (300), got ' + locked.slides[1].aoeZoomLockRefCamW);
     const calBefore = locked.slides[1].aoeCalibration;
 
     await clickModeTab('camera');
     await page.click('#zoomInBtn'); // shrinks camW by factor 0.8
     await clickModeTab('calibrate');
     const { json: zoomed } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
-    const expected = calBefore * (zoomed.slides[1].camera.w / 300);
-    assert(Math.abs(zoomed.slides[1].aoeCalibration - expected) < 1, 'expected calibration to scale proportionally with camera width: expected ' + expected + ', got ' + zoomed.slides[1].aoeCalibration);
+    assert(Math.abs(zoomed.slides[1].aoeCalibration - calBefore) < 0.001, 'locked control geometry should remain unchanged');
+    const beforeDisplayRadius = calBefore / locked.slides[1].camera.w;
+    const afterDisplayRadius = zoomed.slides[1].aoeCalibration / zoomed.slides[1].camera.w;
+    assert(afterDisplayRadius > beforeDisplayRadius, 'locked AoE should grow on the TV when zooming in');
   });
   await test('the manual field is disabled while locked, and temporarily re-enabled while showing the reference square', async () => {
     const disabledLocked = await page.evaluate(() => document.getElementById('aoeCalibration').disabled);
@@ -1292,12 +1390,12 @@ async function main() {
     const disabledAgain = await page.evaluate(() => document.getElementById('aoeCalibration').disabled);
     assert(disabledAgain === true, 'expected manual field disabled again after hiding the reference square');
   });
-  await test('"Snap to calibrated zoom" restores the exact reference framing and calibration', async () => {
+  await test('Return to calibrated zoom restores reference scale and calibration', async () => {
     const { json: before } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
     const refCal = before.slides[1].aoeZoomLockRefCalibration;
     await page.click('#calibSnapZoomBtn');
     const { json: after } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
-    assert(after.slides[1].camera.w === 300, 'expected camera snapped back to full extent (300), got ' + after.slides[1].camera.w);
+    assert(after.slides[1].camera.w === 300, 'expected camera snapped back to the fitted TV-frame width (300), got ' + after.slides[1].camera.w);
     assert(after.slides[1].aoeCalibration === refCal, 'expected calibration restored to the reference value ' + refCal + ', got ' + after.slides[1].aoeCalibration);
     await page.uncheck('#aoeZoomLockToggle'); // reset for cleanliness
     await clickModeTab('maps');
@@ -1597,6 +1695,40 @@ async function main() {
     const currentRows = await page.locator('#combatantList .combatant-row.current-turn .row-title').allTextContents();
     assert(currentRows.length === 1 && stripTurnMarker(currentRows[0]) === 'Aria the Rogue', 'expected Aria (highest score) to be current turn, got ' + JSON.stringify(currentRows));
   });
+  await test('initiative score edits re-sort the tracker by score', async () => {
+    const scoreInput = page.locator('#combatantList .combatant-row:has-text("Goblin") .initiative-score-input');
+    await scoreInput.fill('25');
+    await scoreInput.dispatchEvent('input');
+    await scoreInput.dispatchEvent('change');
+    const names = await page.locator('#combatantList .row-title').allTextContents();
+    assert(stripTurnMarker(names[0]) === 'Goblin', 'editing Goblin initiative to 25 should move it first: ' + JSON.stringify(names));
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(json.initiative.combatants.find(c => c.name === 'Goblin').score === 25, 'edited initiative score did not persist');
+    await page.locator('#combatantList .combatant-row:has-text("Goblin") .initiative-score-input').fill('8');
+    await page.locator('#combatantList .combatant-row:has-text("Goblin") .initiative-score-input').dispatchEvent('change');
+  });
+  await test('initiative cards can be manually reordered irrespective of score', async () => {
+    const handle = page.locator('#combatantList .combatant-row:has-text("Goblin") .combatant-drag-handle');
+    const target = page.locator('#combatantList .combatant-row:has-text("Aria the Rogue")');
+    const handleBox = await handle.boundingBox();
+    const targetBox = await target.boundingBox();
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 5 });
+    await page.mouse.up();
+    let names = await page.locator('#combatantList .row-title').allTextContents();
+    assert(stripTurnMarker(names[0]) === 'Goblin', 'manual drag should move Goblin first: ' + JSON.stringify(names));
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(json.initiative.combatants.find(c => c.name === 'Goblin').order === 0, 'manual initiative order did not persist');
+    const goblinHandle = page.locator('#combatantList .combatant-row:has-text("Goblin") .combatant-drag-handle');
+    const ariaRow = page.locator('#combatantList .combatant-row:has-text("Aria the Rogue")');
+    const goblinBox = await goblinHandle.boundingBox();
+    const ariaBox = await ariaRow.boundingBox();
+    await page.mouse.move(goblinBox.x + goblinBox.width / 2, goblinBox.y + goblinBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(ariaBox.x + ariaBox.width / 2, ariaBox.y + ariaBox.height + 2, { steps: 5 });
+    await page.mouse.up();
+  });
   await test('Next Turn advances to the next combatant in initiative order', async () => {
     await page.click('#nextTurnBtn');
     const currentRows = await page.locator('#combatantList .combatant-row.current-turn .row-title').allTextContents();
@@ -1612,7 +1744,7 @@ async function main() {
     assert(parseInt(roundAfter, 10) === parseInt(roundBefore, 10) + 1, 'expected round to increment on wraparound: before=' + roundBefore + ' after=' + roundAfter);
   });
   await test('removing a combatant updates the list', async () => {
-    await page.click('#combatantList .combatant-row:has-text("Ogre") button');
+    await page.click('#combatantList .combatant-row:has-text("Ogre") .combatant-remove');
     const names = await page.locator('#combatantList .row-title').allTextContents();
     assert(!names.includes('Ogre'), 'expected Ogre removed, got ' + JSON.stringify(names));
   });
@@ -1641,8 +1773,52 @@ async function main() {
     assert(!panelVisible, 'expected initiative panel hidden after unchecking show-on-display');
     await popup.close();
   });
+  await test('initiative display panel can be controlled from the map, persisted, and never leaks private stats', async () => {
+    await page.check('#initiativeShowOnDisplay');
+    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#openDisplayBtn')]);
+    await popup.waitForTimeout(250);
+    const panel = popup.locator('#initiativePanel');
+    const overlay = page.locator('#initiativeLayoutOverlay');
+    const initialOverlay = await overlay.boundingBox();
+    const initialDisplay = await panel.boundingBox();
+    await page.mouse.move(initialOverlay.x + 40, initialOverlay.y + 30);
+    await page.mouse.down();
+    await page.mouse.move(initialOverlay.x - 40, initialOverlay.y + 80, { steps: 5 });
+    await page.mouse.up();
+    const movedDisplay = await panel.boundingBox();
+    assert(movedDisplay.x !== initialDisplay.x || movedDisplay.y !== initialDisplay.y, 'initiative panel did not move from control-overlay drag');
+
+    const handle = page.locator('#initiativeLayoutResizeHandle');
+    const handleBox = await handle.boundingBox();
+    const widthBefore = (await panel.boundingBox()).width;
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handleBox.x + 80, handleBox.y + handleBox.height / 2, { steps: 5 });
+    await page.mouse.up();
+    const widthAfter = (await panel.boundingBox()).width;
+    assert(widthAfter > widthBefore, 'initiative panel did not resize from the control handle');
+    const displayViewport = await popup.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    const resizedBounds = await panel.boundingBox();
+    assert(resizedBounds.x >= 0 && resizedBounds.x + resizedBounds.width <= displayViewport.width, 'resized initiative panel should remain fully inside the display viewport');
+
+    await page.click('#initiativeLayoutRotateHandle');
+    await popup.waitForTimeout(100);
+    assert((await overlay.evaluate(element => element.style.transform)) === 'none', 'control initiative preview should stay upright');
+    assert((await panel.getAttribute('style')).includes('rotate(90deg)'), 'initiative panel should rotate exactly 90 degrees');
+    const rotatedBounds = await panel.boundingBox();
+    assert(rotatedBounds.x >= 0 && rotatedBounds.y >= 0 && rotatedBounds.x + rotatedBounds.width <= displayViewport.width && rotatedBounds.y + rotatedBounds.height <= displayViewport.height, 'rotated initiative panel should remain fully inside the display viewport');
+    const panelText = await panel.textContent();
+    assert(!/\bAC\b|\bHP\b|\b25\b/.test(panelText), 'display panel leaked AC/HP/private values: ' + panelText);
+    const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
+    assert(json.initiative.layout.rotation === 90, 'rotation did not persist in session');
+    assert(json.initiative.layout.width > 220, 'resized width did not persist in session');
+    assert(json.initiative.layout.x !== 0.76 || json.initiative.layout.y !== 0.03, 'dragged position did not persist in session');
+    await popup.close();
+  });
   await test('AC input sets a combatant\'s armor class', async () => {
-    const acInput = page.locator('#combatantList .combatant-row:has-text("Goblin") .combatant-stats input[type="number"]');
+    const goblinRow = page.locator('#combatantList .combatant-row:has-text("Goblin")');
+    if (!(await goblinRow.locator('.combatant-details').isVisible())) await goblinRow.locator('.combatant-collapse').click();
+    const acInput = page.locator('#combatantList .combatant-row:has-text("Goblin") .armor-class-input');
     await acInput.fill('15');
     await acInput.blur();
     const { json } = await captureDownloadJSON(() => page.click('#saveSessionBtn'));
@@ -1650,12 +1826,18 @@ async function main() {
     assert(goblin.ac === 15, 'expected AC 15, got ' + JSON.stringify(goblin));
   });
   await test('HP box sets an absolute value with a plain number', async () => {
-    const hpInput = page.locator('#combatantList .combatant-row:has-text("Goblin") .combatant-stats input[type="text"]');
+    const row = page.locator('#combatantList .combatant-row:has-text("Goblin")');
+    const hpInput = row.locator('.combatant-stats input[type="text"]');
+    assert(await hpInput.getAttribute('placeholder') === 'Starting HP', 'unset HP should clearly request a starting value');
+    assert(JSON.stringify(await row.locator('.hp-operation-buttons button').allTextContents()) === JSON.stringify(['=']), 'unset HP should offer only the set operation');
     await hpInput.fill('20');
     await hpInput.press('Enter');
-    const readout = await page.locator('#combatantList .combatant-row:has-text("Goblin") .hp-readout').textContent();
+    const readout = await row.locator('.hp-readout').textContent();
     assert(readout === '20', 'expected HP readout to show 20, got ' + readout);
-    const pills = await page.locator('#combatantList .combatant-row:has-text("Goblin") .hp-log-pill').allTextContents();
+    assert(await row.locator('.hp-log-row').count() === 0, 'HP history should remain collapsed after setting HP');
+    assert(JSON.stringify(await row.locator('.hp-operation-buttons button').allTextContents()) === JSON.stringify(['+', '−', '=']), 'initialized HP should offer add, subtract, and set operations');
+    await row.getByRole('button', { name: 'Show HP history for Goblin, 1 entries' }).click();
+    const pills = await row.locator('.hp-log-pill').allTextContents();
     assert(pills.length === 1 && /20/.test(pills[0]), 'expected one log pill showing 20, got ' + JSON.stringify(pills));
   });
   await test('HP box applies +N/-N as a running delta, logging each entry as a separate pill', async () => {
@@ -1721,9 +1903,122 @@ async function main() {
     assert(json.initiative && json.initiative.combatants.length === 2, 'expected 2 combatants in saved session, got ' + JSON.stringify(json.initiative));
     assert(json.initiative.round === 2, 'expected round 2 saved, got ' + json.initiative.round);
   });
-  await test('Undo button is disabled/inert on Dice and Init tabs (no undo history for these)', async () => {
-    const disabledOnInit = await page.evaluate(() => document.getElementById('undoBtn').disabled);
-    assert(disabledOnInit === true, 'expected Undo button disabled while on the Init tab');
+  await test('custom initiative columns respect display visibility and reactions reset at turn start', async () => {
+    const isolatedPage = await context.newPage();
+    try {
+      await isolatedPage.goto(APP_PATH);
+      await isolatedPage.setInputFiles('#fileInput', MAP1);
+      await isolatedPage.click('#openInitiativeBtn');
+      for (const columnName of ['Condition', 'GM Note']) {
+        await isolatedPage.fill('#initiativeColumnName', columnName);
+        await isolatedPage.click('#addInitiativeColumnBtn');
+      }
+      await isolatedPage.locator('#initiativeColumnList .initiative-column-row').first().locator('input[type="checkbox"]').check();
+      for (const [name, score] of [['Aria', '19'], ['Goblin', '8']]) {
+        await isolatedPage.fill('#combatantName', name);
+        await isolatedPage.fill('#combatantScore', score);
+        await isolatedPage.click('#addCombatantBtn');
+      }
+      await isolatedPage.getByLabel('Condition for Aria').fill('Blessed');
+      await isolatedPage.getByLabel('GM Note for Aria').fill('Private note');
+      await isolatedPage.getByLabel('Mark reaction used for Aria').click();
+      await isolatedPage.getByLabel('Mark reaction used for Goblin').click();
+      await isolatedPage.click('#nextTurnBtn');
+      assert(await isolatedPage.getByLabel('Restore reaction for Aria').getAttribute('aria-pressed') === 'true', 'outgoing combatant reaction should remain used');
+      assert(await isolatedPage.getByLabel('Mark reaction used for Goblin').getAttribute('aria-pressed') === 'false', 'incoming combatant reaction should reset');
+
+      await isolatedPage.check('#initiativeShowOnDisplay');
+      const [popup] = await Promise.all([isolatedPage.waitForEvent('popup'), isolatedPage.click('#openDisplayBtn')]);
+      await popup.locator('#initiativePanel').waitFor({ state: 'visible' });
+      const displayText = await popup.locator('#initiativePanel').textContent();
+      assert(displayText.includes('Condition') && displayText.includes('Blessed'), 'displayed custom column should reach display');
+      assert(!displayText.includes('GM Note') && !displayText.includes('Private note'), 'hidden custom column should stay private');
+      const displayRows = popup.locator('#initiativePanel .init-row:not(.init-head)');
+      const ariaReaction = displayRows.filter({ hasText: 'Aria' }).locator('.init-reaction');
+      const goblinReaction = displayRows.filter({ hasText: 'Goblin' }).locator('.init-reaction');
+      assert(await ariaReaction.getAttribute('aria-label') === 'Reaction used' && (await ariaReaction.getAttribute('class')).includes('used'), 'used reaction should appear muted beside Aria');
+      assert(await goblinReaction.getAttribute('aria-label') === 'Reaction available' && !(await goblinReaction.getAttribute('class')).includes('used'), 'reset reaction should appear available beside Goblin');
+      const gridMetrics = await popup.locator('#initiativePanel .init-table').evaluate(table => {
+        const rows = [...table.querySelectorAll('.init-row')];
+        const positions = rows.map(row => [...row.children].map(cell => cell.getBoundingClientRect().x));
+        return {
+          overflow: table.scrollWidth > table.clientWidth,
+          aligned: positions.every(row => row.every((position, index) => Math.abs(position - positions[0][index]) < 1)),
+        };
+      });
+      assert(!gridMetrics.overflow && gridMetrics.aligned, 'custom initiative columns should share aligned tracks without overflow');
+      await popup.close();
+
+      const downloadPromise = isolatedPage.waitForEvent('download');
+      await isolatedPage.click('#saveSessionBtn');
+      const download = await downloadPromise;
+      const saved = JSON.parse(await fs.promises.readFile(await download.path(), 'utf8'));
+      const savedAria = saved.initiative.combatants.find(combatant => combatant.name === 'Aria');
+      assert(saved.initiative.columns.length === 2, 'custom columns should persist');
+      assert(savedAria.reactionUsed === true, 'reaction state should persist');
+      assert(Object.values(savedAria.customValues).includes('Blessed'), 'custom text values should persist');
+    } finally {
+      await isolatedPage.close();
+    }
+  });
+  await test('initiative names never truncate while custom columns flex with tile width', async () => {
+    const isolatedPage = await context.newPage();
+    try {
+      await isolatedPage.goto(APP_PATH);
+      await isolatedPage.setInputFiles('#fileInput', MAP1);
+      await isolatedPage.click('#openInitiativeBtn');
+      await isolatedPage.fill('#initiativeColumnName', 'Conditions');
+      await isolatedPage.click('#addInitiativeColumnBtn');
+      await isolatedPage.locator('#initiativeColumnList input[type="checkbox"]').check();
+      for (const [name, score, condition] of [
+        ['Alexandria the Unreasonably Well-Named', '19', 'Grappled'],
+        ['Goblin Captain', '14', 'Restrained'],
+        ['Minsc', '10', 'Blinded'],
+      ]) {
+        await isolatedPage.fill('#combatantName', name);
+        await isolatedPage.fill('#combatantScore', score);
+        await isolatedPage.click('#addCombatantBtn');
+        await isolatedPage.getByLabel('Conditions for ' + name).fill(condition);
+      }
+      await isolatedPage.check('#initiativeShowOnDisplay');
+      const [popup] = await Promise.all([isolatedPage.waitForEvent('popup'), isolatedPage.click('#openDisplayBtn')]);
+      await popup.locator('#initiativePanel').waitFor({ state: 'visible' });
+      const resizeHandle = isolatedPage.locator('#initiativeLayoutResizeHandle');
+      await resizeHandle.focus();
+      for (let index = 0; index < 10; index++) await isolatedPage.keyboard.press('ArrowLeft');
+      const narrow = await popup.locator('#initiativePanel').evaluate(panel => ({
+        namesFull: [...panel.querySelectorAll('.init-row:not(.init-head) .init-name')].every(cell => cell.scrollWidth <= cell.clientWidth + 1),
+        namesHaveNoTooltips: [...panel.querySelectorAll('.init-row:not(.init-head) .init-name')].every(cell => !cell.title),
+        customTruncated: [...panel.querySelectorAll('.init-row:not(.init-head) .init-custom-cell')].some(cell => cell.scrollWidth > cell.clientWidth + 1),
+        customTooltips: [...panel.querySelectorAll('.init-row:not(.init-head) .init-custom-cell')].map(cell => cell.title),
+      }));
+      assert(narrow.namesFull, 'resizing narrower must never truncate combatant names');
+      assert(narrow.namesHaveNoTooltips, 'fully visible names should not receive redundant tooltips');
+      assert(narrow.customTruncated, 'custom columns should absorb narrow-width truncation');
+      assert(JSON.stringify(narrow.customTooltips) === JSON.stringify(['Grappled', 'Restrained', 'Blinded']), 'truncated custom values should expose their full text on hover');
+      await resizeHandle.focus();
+      for (let index = 0; index < 45; index++) await isolatedPage.keyboard.press('ArrowRight');
+      const wide = await popup.locator('#initiativePanel').evaluate(panel => ({
+        namesFull: [...panel.querySelectorAll('.init-row:not(.init-head) .init-name')].every(cell => cell.scrollWidth <= cell.clientWidth + 1),
+        customFull: [...panel.querySelectorAll('.init-row:not(.init-head) .init-custom-cell')].every(cell => cell.scrollWidth <= cell.clientWidth + 1),
+        customTooltipsRemoved: [...panel.querySelectorAll('.init-row:not(.init-head) .init-custom-cell')].every(cell => !cell.title),
+      }));
+      assert(wide.namesFull, 'names should remain complete after widening');
+      assert(wide.customFull, 'custom columns should use added width and reveal their full values');
+      assert(wide.customTooltipsRemoved, 'tooltips should be removed once custom values are fully visible');
+      const previewNamesFull = await isolatedPage.locator('#initiativeLayoutOverlay').evaluate(overlay =>
+        [...overlay.querySelectorAll('.init-row:not(.init-head) .init-name')].every(cell => cell.scrollWidth <= cell.clientWidth + 1));
+      assert(previewNamesFull, 'control preview must preserve complete names too');
+      await popup.close();
+    } finally {
+      await isolatedPage.close();
+    }
+  });
+  await test('opening Initiative preserves the active tool and its Undo context', async () => {
+    await clickModeTab('fog');
+    await clickModeTab('init');
+    const disabledWithInitiativeOpen = await page.evaluate(() => document.getElementById('undoBtn').disabled);
+    assert(disabledWithInitiativeOpen === false, 'Initiative utility should preserve Fog and its Undo context');
     await clickModeTab('dice');
     const disabledOnDice = await page.evaluate(() => document.getElementById('undoBtn').disabled);
     assert(disabledOnDice === true, 'expected Undo button disabled while on the Dice tab');
@@ -1737,23 +2032,51 @@ async function main() {
     const saveVisible = await page.isVisible('#saveSessionBtn');
     assert(saveVisible, 'Save session button should be visible regardless of active tab');
   });
+  await test('Hand selector can be moved without arming and remains keyboard accessible', async () => {
+    const isolatedPage = await context.newPage();
+    try {
+      await isolatedPage.goto(APP_PATH);
+      await isolatedPage.setInputFiles('#fileInput', MAP1);
+      const hand = isolatedPage.locator('#universalSelectBtn');
+      const before = await hand.boundingBox();
+      await isolatedPage.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+      await isolatedPage.mouse.down();
+      await isolatedPage.mouse.move(before.x + 180, before.y - 120, { steps: 5 });
+      await isolatedPage.mouse.up();
+      const after = await hand.boundingBox();
+      assert(after.x !== before.x || after.y !== before.y, 'drag should move the Hand selector');
+      assert(await hand.getAttribute('aria-pressed') === 'false', 'dragging should not arm the Hand selector');
+      await hand.focus();
+      await isolatedPage.keyboard.press('Enter');
+      assert(await hand.getAttribute('aria-pressed') === 'true', 'keyboard activation should arm the Hand selector');
+      await isolatedPage.keyboard.press('Space');
+      assert(await hand.getAttribute('aria-pressed') === 'false', 'second keyboard activation should disarm the Hand selector');
+      const downloadPromise = isolatedPage.waitForEvent('download');
+      await isolatedPage.click('#saveSessionBtn');
+      const download = await downloadPromise;
+      const saved = JSON.parse(await fs.promises.readFile(await download.path(), 'utf8'));
+      assert(saved.handPosition.x > 0 && saved.handPosition.y < 1, 'moved Hand position should persist');
+    } finally {
+      await isolatedPage.close();
+    }
+  });
   await test('HP log is collapsed by default for a combatant with no logged entries yet', async () => {
     await clickModeTab('init');
     await page.fill('#combatantName', 'Fresh Recruit');
     await page.fill('#combatantScore', '5');
     await page.click('#addCombatantBtn');
     const row = page.locator('#combatantList .combatant-row:has-text("Fresh Recruit")');
+    await row.locator('.combatant-collapse').click();
     const pillsBefore = await row.locator('.hp-log-row').count();
     assert(pillsBefore === 0, 'expected no HP log row visible before any entry is logged');
-    const expandBtn = row.locator('.combatant-stats button').last();
-    const label = await expandBtn.textContent();
-    assert(label.trim() === '▾', 'expected collapsed toggle with no count badge, got "' + label + '"');
-    // logging an entry should auto-reveal the log
+    const expandBtn = row.getByRole('button', { name: 'Show HP history for Fresh Recruit' });
+    assert((await expandBtn.textContent()).trim() === '▾', 'expected a collapsed HP history chevron');
     const hpInput = row.locator('.combatant-stats input[type="text"]');
     await hpInput.fill('12');
     await hpInput.press('Enter');
-    const pillsAfter = await row.locator('.hp-log-row .hp-log-pill').count();
-    assert(pillsAfter === 1, 'expected the log to auto-expand and show 1 pill after logging an entry');
+    assert(await row.locator('.hp-log-row').count() === 0, 'HP history should remain collapsed after logging an entry');
+    await row.getByRole('button', { name: 'Show HP history for Fresh Recruit, 1 entries' }).click();
+    assert(await row.locator('.hp-log-row .hp-log-pill').count() === 1, 'History control should reveal the logged entry');
   });
 
   await teardown();

@@ -1,5 +1,18 @@
 import { clamp } from '../core/geometry.mjs';
 
+export const DEFAULT_CAMERA_ASPECT = 16 / 9;
+
+export function fitCameraToAspect(mapWidth, mapHeight, aspect = DEFAULT_CAMERA_ASPECT) {
+  const width = Math.min(mapWidth, mapHeight * aspect);
+  const height = width / aspect;
+  return {
+    x: (mapWidth - width) / 2,
+    y: (mapHeight - height) / 2,
+    w: width,
+    h: height,
+  };
+}
+
 export function hitTestCamera(camera, x, y, scale = 1, handleSize = 14) {
   const hitRadius = (handleSize / 2 + 6) * scale;
   const corners = {
@@ -28,8 +41,9 @@ export function cameraCursorFor(kind) {
 }
 
 export function applyCameraDrag(camera, mapWidth, mapHeight, kind, deltaX, deltaY) {
-  const aspect = mapWidth / mapHeight;
-  const minimumWidth = mapWidth * 0.05;
+  const aspect = camera.w / camera.h;
+  const maximumWidth = Math.min(mapWidth, mapHeight * aspect);
+  const minimumWidth = maximumWidth * 0.05;
 
   if (kind === 'move') {
     camera.x = clamp(camera.x + deltaX, 0, mapWidth - camera.w);
@@ -46,7 +60,7 @@ export function applyCameraDrag(camera, mapWidth, mapHeight, kind, deltaX, delta
   if (kind === 'se') { anchorX = camera.x; anchorY = camera.y; width = camera.w + deltaX; }
   if (width === undefined) return camera;
 
-  width = clamp(width, minimumWidth, mapWidth);
+  width = clamp(width, minimumWidth, maximumWidth);
   const height = width / aspect;
   if (kind === 'nw') { camera.x = anchorX - width; camera.y = anchorY - height; }
   if (kind === 'ne') { camera.x = anchorX; camera.y = anchorY - height; }
@@ -61,9 +75,10 @@ export function applyCameraDrag(camera, mapWidth, mapHeight, kind, deltaX, delta
 }
 
 export function zoomCameraAt(camera, mapWidth, mapHeight, cursorX, cursorY, factor) {
-  const aspect = mapWidth / mapHeight;
-  const minimumWidth = mapWidth * 0.05;
-  const width = clamp(camera.w * factor, minimumWidth, mapWidth);
+  const aspect = camera.w / camera.h;
+  const maximumWidth = Math.min(mapWidth, mapHeight * aspect);
+  const minimumWidth = maximumWidth * 0.05;
+  const width = clamp(camera.w * factor, minimumWidth, maximumWidth);
   const height = width / aspect;
 
   camera.x = cursorX - (cursorX - camera.x) * (width / camera.w);

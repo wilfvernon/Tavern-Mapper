@@ -22,6 +22,7 @@ const output = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tavern Mapper — Table Control</title>
 <style>
 ${styles.trimEnd()}

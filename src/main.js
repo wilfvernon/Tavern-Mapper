@@ -15,12 +15,13 @@ import { computeAoeGeometry, rotationHandlePoint } from './features/aoe.mjs';
 import {
   applyCameraDrag,
   cameraCursorFor,
+  fitCameraToAspect,
   hitTestCamera,
   zoomCameraAt,
 } from './features/camera.mjs';
 import { rollDice } from './features/dice.mjs';
 import { hitTestDungeon, nextDungeonNumber } from './features/dungeon.mjs';
-import { computeHitPoints, sortCombatants } from './features/initiative.mjs';
+import { computeHitPoints, sortCombatants, sortCombatantsByScore } from './features/initiative.mjs';
 import { createDisplayWindowManager } from './display/window-manager.mjs';
 import {
   drawControlAoe,
@@ -32,7 +33,9 @@ import {
   drawMarkers as drawCanvasMarkers,
   drawMarkerShape,
   applyFogAction,
+  applyDrawingAction,
   paintFogStroke,
+  paintDrawingStroke,
 } from './renderers/canvas2d.mjs';
 import { createSharedColorPicker } from './ui/color-picker.mjs';
 import { escapeHtml } from './ui/escape-html.mjs';
@@ -46,10 +49,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const openDisplayBtn = document.getElementById('openDisplayBtn');
   const displayStatus = document.getElementById('displayStatus');
   const appStatus = document.getElementById('appStatus');
+  const universalSelectBtn = document.getElementById('universalSelectBtn');
 
   const slideListEl = document.getElementById('slideList');
   const prevSlideBtn = document.getElementById('prevSlideBtn');
   const nextSlideBtn = document.getElementById('nextSlideBtn');
+  const annotationTextSizeEl = document.getElementById('annotationTextSize');
+  const annotationTextSizeLabel = document.getElementById('annotationTextSizeLabel');
+  const annotationTextRotateBtn = document.getElementById('annotationTextRotateBtn');
   const saveSessionBtn = document.getElementById('saveSessionBtn');
   const loadSessionInput = document.getElementById('loadSessionInput');
   const resumeBanner = document.getElementById('resumeBanner');
@@ -66,11 +73,13 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const subTabsDisplay = document.getElementById('subTabsDisplay');
   const subTabsTools = document.getElementById('subTabsTools');
   const brushModeBtn = document.getElementById('brushModeBtn');
+  const drawModeBtn = document.getElementById('drawModeBtn');
   const markerModeBtn = document.getElementById('markerModeBtn');
   const cameraModeBtn = document.getElementById('cameraModeBtn');
   const gridModeBtn = document.getElementById('gridModeBtn');
   const dungeonModeBtn = document.getElementById('dungeonModeBtn');
   const fogControls = document.getElementById('fogControls');
+  const drawControls = document.getElementById('drawControls');
   const markerControls = document.getElementById('markerControls');
   const cameraControls = document.getElementById('cameraControls');
   const gridControls = document.getElementById('gridControls');
@@ -102,6 +111,16 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const resetFogBtn = document.getElementById('resetFogBtn');
   const clearFogBtn = document.getElementById('clearFogBtn');
 
+  const drawPenBtn = document.getElementById('drawPenBtn');
+  const drawEraserBtn = document.getElementById('drawEraserBtn');
+  const drawSizeEl = document.getElementById('drawSize');
+  const drawSizeLabel = document.getElementById('drawSizeLabel');
+  const drawColorSwatches = document.getElementById('drawColorSwatches');
+  const drawColorSwatchesRecent = document.getElementById('drawColorSwatchesRecent');
+  const drawColorWheel = document.getElementById('drawColorWheel');
+  const drawVisibleToggle = document.getElementById('drawVisibleToggle');
+  const clearDrawingBtn = document.getElementById('clearDrawingBtn');
+
   const colorSwatches = document.getElementById('colorSwatches');
   const colorSwatchesRecent = document.getElementById('colorSwatchesRecent');
   const markerColorWheel = document.getElementById('markerColorWheel');
@@ -116,6 +135,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const zoomOutBtn = document.getElementById('zoomOutBtn');
   const fitFullBtn = document.getElementById('fitFullBtn');
   const centerCameraBtn = document.getElementById('centerCameraBtn');
+  const cameraAspectEl = document.getElementById('cameraAspect');
   const cameraZoomEl = document.getElementById('cameraZoom');
   const cameraZoomLabel = document.getElementById('cameraZoomLabel');
 
@@ -163,7 +183,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const clearPoolBtn = document.getElementById('clearPoolBtn');
   const revealPoolBtn = document.getElementById('revealPoolBtn');
 
-  const initModeBtn = document.getElementById('initModeBtn');
+  const openInitiativeBtn = document.getElementById('openInitiativeBtn');
   const initiativeControls = document.getElementById('initiativeControls');
   const combatantNameEl = document.getElementById('combatantName');
   const combatantScoreEl = document.getElementById('combatantScore');
@@ -172,6 +192,19 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const nextTurnBtn = document.getElementById('nextTurnBtn');
   const resetInitiativeBtn = document.getElementById('resetInitiativeBtn');
   const initiativeShowOnDisplay = document.getElementById('initiativeShowOnDisplay');
+  const initiativeColumnList = document.getElementById('initiativeColumnList');
+  const initiativeColumnName = document.getElementById('initiativeColumnName');
+  const addInitiativeColumnBtn = document.getElementById('addInitiativeColumnBtn');
+  const initiativeLayoutOverlay = document.getElementById('initiativeLayoutOverlay');
+  const initiativeLayoutPreview = document.getElementById('initiativeLayoutPreview');
+  const initiativeLayoutRotateHandle = document.getElementById('initiativeLayoutRotateHandle');
+  const initiativeLayoutResizeHandle = document.getElementById('initiativeLayoutResizeHandle');
+  const initiativeFloatingWindow = document.getElementById('initiativeFloatingWindow');
+  const initiativeFloatingHeader = document.getElementById('initiativeFloatingHeader');
+  const initiativeFloatingBody = document.getElementById('initiativeFloatingBody');
+  const initiativeFloatingMinimize = document.getElementById('initiativeFloatingMinimize');
+  const initiativeFloatingClose = document.getElementById('initiativeFloatingClose');
+  const initiativeFloatingResize = document.getElementById('initiativeFloatingResize');
   const combatantList = document.getElementById('combatantList');
   const deleteSelectedAoeBtn = document.getElementById('deleteSelectedAoeBtn');
   const aoeCalibrationGridNote = document.getElementById('aoeCalibrationGridNote');
@@ -186,9 +219,130 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   const ctx = workCanvas.getContext('2d');
 
+  initiativeFloatingBody.appendChild(initiativeControls);
+  initiativeControls.style.display = 'flex';
+  let initiativeWindowMinimized = false;
+
+  function applyInitiativeWindowGeometry() {
+    const areaWidth = canvasArea.clientWidth;
+    const areaHeight = canvasArea.clientHeight;
+    if (!areaWidth || !areaHeight) return;
+    const minWidth = Math.min(300, areaWidth);
+    const minHeight = Math.min(260, areaHeight);
+    initiative.window.width = Math.max(minWidth, Math.min(areaWidth, initiative.window.width));
+    initiative.window.height = Math.max(minHeight, Math.min(areaHeight, initiative.window.height));
+    initiative.window.x = Math.max(0, Math.min(areaWidth - initiative.window.width, initiative.window.x));
+    initiative.window.y = Math.max(0, Math.min(areaHeight - 42, initiative.window.y));
+    initiativeFloatingWindow.style.left = initiative.window.x + 'px';
+    initiativeFloatingWindow.style.top = initiative.window.y + 'px';
+    initiativeFloatingWindow.style.width = initiative.window.width + 'px';
+    initiativeFloatingWindow.style.height = initiative.window.height + 'px';
+    syncTruncationTooltips(initiativeFloatingWindow);
+  }
+
+  function openInitiativeWindow() {
+    initiativeFloatingWindow.style.display = 'block';
+    openInitiativeBtn.setAttribute('aria-expanded', 'true');
+    initiativeFloatingWindow.classList.toggle('minimized', initiativeWindowMinimized);
+    initiativeFloatingMinimize.textContent = initiativeWindowMinimized ? '+' : '−';
+    initiativeFloatingMinimize.setAttribute('aria-label', initiativeWindowMinimized ? 'Restore initiative controls' : 'Minimize initiative controls');
+    applyInitiativeWindowGeometry();
+    renderInitiative();
+  }
+
+  openInitiativeBtn.addEventListener('click', openInitiativeWindow);
+
+  initiativeFloatingMinimize.addEventListener('click', (event) => {
+    event.stopPropagation();
+    initiativeWindowMinimized = !initiativeWindowMinimized;
+    openInitiativeWindow();
+  });
+  initiativeFloatingClose.addEventListener('click', (event) => {
+    event.stopPropagation();
+    initiativeFloatingWindow.style.display = 'none';
+    openInitiativeBtn.setAttribute('aria-expanded', 'false');
+    renderInitiativeLayoutOverlay();
+  });
+  initiativeFloatingHeader.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest('button')) return;
+    event.preventDefault();
+    const areaRect = canvasArea.getBoundingClientRect();
+    const windowRect = initiativeFloatingWindow.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = windowRect.left - areaRect.left;
+    const startTop = windowRect.top - areaRect.top;
+    const move = (moveEvent) => {
+      const nextLeft = Math.max(0, Math.min(areaRect.width - windowRect.width, startLeft + moveEvent.clientX - startX));
+      const nextTop = Math.max(0, Math.min(areaRect.height - Math.min(windowRect.height, 42), startTop + moveEvent.clientY - startY));
+      initiativeFloatingWindow.style.left = nextLeft + 'px';
+      initiativeFloatingWindow.style.top = nextTop + 'px';
+      initiative.window.x = nextLeft;
+      initiative.window.y = nextTop;
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      scheduleAutosave();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  });
+
+  initiativeFloatingResize.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || initiativeWindowMinimized) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const areaRect = canvasArea.getBoundingClientRect();
+    const windowRect = initiativeFloatingWindow.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const move = (moveEvent) => {
+      initiative.window.width = Math.max(Math.min(300, areaRect.width), Math.min(areaRect.width - initiative.window.x, windowRect.width + moveEvent.clientX - startX));
+      initiative.window.height = Math.max(Math.min(260, areaRect.height), Math.min(areaRect.height - initiative.window.y, windowRect.height + moveEvent.clientY - startY));
+      applyInitiativeWindowGeometry();
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      scheduleAutosave();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  });
+  initiativeFloatingResize.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key) || initiativeWindowMinimized) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 40 : 10;
+    if (event.key === 'ArrowLeft') initiative.window.width -= step;
+    if (event.key === 'ArrowRight') initiative.window.width += step;
+    if (event.key === 'ArrowUp') initiative.window.height -= step;
+    if (event.key === 'ArrowDown') initiative.window.height += step;
+    applyInitiativeWindowGeometry();
+    scheduleAutosave();
+  });
+
   function announceStatus(message) {
     appStatus.textContent = '';
     requestAnimationFrame(() => { appStatus.textContent = message; });
+  }
+
+  function syncTruncationTooltips(root = document) {
+    root.querySelectorAll('.slide-name, .combatant-custom-value label, .init-cell').forEach(element => {
+      const text = element.textContent.trim();
+      const truncated = element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1;
+      if (truncated && text) {
+        element.title = text;
+        element.dataset.truncationTooltip = 'true';
+      } else if (element.dataset.truncationTooltip === 'true') {
+        element.removeAttribute('title');
+        delete element.dataset.truncationTooltip;
+      }
+    });
   }
 
   function syncSemanticButton(button) {
@@ -245,6 +399,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const nextWidth = Math.max(MIN_W, Math.min(MAX_W, width));
       controlsEl.style.width = nextWidth + 'px';
       handle.setAttribute('aria-valuenow', String(Math.round(nextWidth)));
+      applyHandPosition();
+      syncTruncationTooltips(controlsEl);
     }
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -281,7 +437,26 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   function cs() { return slides.find(s => s.id === currentSlideId) || null; }
 
-  let appMode = 'maps';  // 'maps' | 'brush' | 'markers' | 'camera' | 'grid' | 'aoe' | 'dice' | 'init'
+  function ensureDrawingLayer(slide) {
+    if (slide.drawingCanvas) return slide.drawingCtx;
+    slide.drawingCanvas = document.createElement('canvas');
+    slide.drawingCanvas.width = slide.mapCanvas.width;
+    slide.drawingCanvas.height = slide.mapCanvas.height;
+    slide.drawingCtx = slide.drawingCanvas.getContext('2d');
+    if (slide.drawingBaseImage) slide.drawingCtx.drawImage(slide.drawingBaseImage, 0, 0);
+    return slide.drawingCtx;
+  }
+
+  function getDrawingDataUrl(slide) {
+    if (!slide.drawingCanvas && !slide.drawingDataUrl) return null;
+    if (slide.drawingDirty) {
+      slide.drawingDataUrl = slide.drawingCanvas.toDataURL('image/png');
+      slide.drawingDirty = false;
+    }
+    return slide.drawingDataUrl;
+  }
+
+  let appMode = 'maps';  // 'maps' | 'brush' | 'draw' | 'markers' | 'camera' | 'grid' | 'dungeon' | 'calibrate' | 'aoe' | 'dice'
   let fogDir = 'reveal';  // 'reveal' | 'cover'
   let drawing = false;
   let activeFogAction = null;
@@ -289,6 +464,16 @@ import { escapeHtml } from './ui/escape-html.mjs';
   const UNDO_LIMIT = 25;
   let fogViewOpacity = 0.55;
   let gridColor = '#ffffff';
+  let universalSelectActive = false;
+  let handPosition = { x: 0, y: 1 };
+  let annotationTextSize = 13;
+  let annotationTextRotation = 0;
+
+  const DRAW_COLORS = ['#ff5b5b', '#ffd23f', '#4fa3ff', '#4fd67f', '#ffffff'];
+  let drawColor = DRAW_COLORS[0];
+  let drawTool = 'pen';
+  let drawingOnMap = false;
+  let activeDrawingAction = null;
 
   // ---------- Dice roller state (global, not per-slide — rolling isn't tied to a specific map) ----------
   const DICE_SIDES = [4, 6, 8, 10, 12, 20, 100];
@@ -303,9 +488,16 @@ import { escapeHtml } from './ui/escape-html.mjs';
   let dicePoolRevealed = false;
 
   // ---------- Initiative tracker state (global, not per-slide — combat isn't tied to a specific map) ----------
-  let initiative = { combatants: [], currentCombatantId: null, round: 1, showOnDisplay: false };
+  function defaultInitiativeLayout() {
+    return { x: 0.76, y: 0.03, width: 220, rotation: 0 };
+  }
+  function defaultInitiativeWindow() {
+    return { x: 18, y: 18, width: 420, height: 640 };
+  }
+  let initiative = { combatants: [], columns: [], currentCombatantId: null, round: 1, showOnDisplay: false, layout: defaultInitiativeLayout(), window: defaultInitiativeWindow() };
   let nextCombatantId = 1;
   let nextHpLogId = 1;
+  let nextInitiativeColumnId = 1;
 
   let displayWindowManager = null;
 
@@ -351,17 +543,61 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   // ---------- Category tab system (Maps standalone; Map/Display/Tools group the rest) ----------
   const TAB_CATEGORY = {
-    brush: 'map', markers: 'map', grid: 'map', dungeon: 'map',
+    brush: 'map', draw: 'map', markers: 'map', grid: 'map', dungeon: 'map',
     camera: 'display', calibrate: 'display',
-    aoe: 'tools', dice: 'tools', init: 'tools'
+    aoe: 'tools', dice: 'tools'
   };
   let lastActiveInCategory = { map: 'brush', display: 'camera', tools: 'aoe' };
 
   let dragGrabOffsetAoe = { dx: 0, dy: 0 };
   const HANDLE_SIZE = 14;
+  const CAMERA_ASPECTS = {
+    '16:9': 16 / 9,
+    '16:10': 16 / 10,
+    '4:3': 4 / 3,
+    '3:2': 3 / 2,
+    '21:9': 21 / 9,
+  };
+
+  function cameraAspectValue(slide) {
+    if (slide.cameraAspect === 'source') return slide.mapCanvas.width / slide.mapCanvas.height;
+    if (slide.cameraAspect === 'custom') return slide.camera.w / slide.camera.h;
+    return CAMERA_ASPECTS[slide.cameraAspect] || CAMERA_ASPECTS['16:9'];
+  }
+
+  function inferCameraAspect(camera, mapWidth, mapHeight) {
+    const aspect = camera.w / camera.h;
+    const preset = Object.entries(CAMERA_ASPECTS).find(([, value]) => Math.abs(aspect - value) < 0.001);
+    if (preset) return preset[0];
+    if (Math.abs(aspect - mapWidth / mapHeight) < 0.001) return 'source';
+    return 'custom';
+  }
+
+  function reframeCameraAspect(slide, aspect) {
+    const centerX = slide.camera.x + slide.camera.w / 2;
+    const centerY = slide.camera.y + slide.camera.h / 2;
+    const fitted = fitCameraToAspect(slide.mapCanvas.width, slide.mapCanvas.height, aspect);
+    const width = fitted.w * 100 / slide.cameraZoom;
+    const height = fitted.h * 100 / slide.cameraZoom;
+    slide.camera = {
+      x: clamp(centerX - width / 2, 0, slide.mapCanvas.width - width),
+      y: clamp(centerY - height / 2, 0, slide.mapCanvas.height - height),
+      w: width,
+      h: height,
+    };
+  }
+
+  function updateCameraZoomFromFrame(slide) {
+    const fitted = fitCameraToAspect(slide.mapCanvas.width, slide.mapCanvas.height, cameraAspectValue(slide));
+    slide.cameraZoom = Math.max(100, Math.min(2000, fitted.w / slide.camera.w * 100));
+  }
 
   // ---------- Shared color picker (presets + wheel + cross-context "recently used") ----------
   const { setup: setupColorPicker, highlight: highlightColorPicker } = createSharedColorPicker();
+
+  setupColorPicker(drawColorSwatches, drawColorSwatchesRecent, drawColorWheel, DRAW_COLORS, drawColor, (hex) => {
+    drawColor = hex;
+  }, 'Drawing color');
 
   setupColorPicker(colorSwatches, colorSwatchesRecent, markerColorWheel, MARKER_COLORS, markerColor, (hex) => {
     markerColor = hex;
@@ -489,15 +725,28 @@ import { escapeHtml } from './ui/escape-html.mjs';
       mapDataUrl: constrained.scaled ? mapCanvas.toDataURL('image/jpeg', 0.9) : sourceDataUrl,
       thumb: thumbCanvas.toDataURL('image/jpeg', 0.7),
       markers: [],
-      camera: { x: 0, y: 0, w, h },
+      camera: fitCameraToAspect(w, h),
+      cameraAspect: '16:9',
+      cameraZoom: 100,
       grid: { enabled: false, size: 100, offsetX: 0, offsetY: 0, opacity: 1 },
       aoeShapes: [],
       aoeCalibration: 100, // pixels per 5ft square, used only when this map has no grid
+      aoeCalibrationRefValue: 100,
+      aoeCalibrationRefZoom: 100,
       aoeZoomLock: false,
       aoeZoomLockRefCalibration: null,
       aoeZoomLockRefCamW: null,
+      aoeZoomLockRefZoom: null,
       aoeZoomLockRefCamera: null,
       dungeonSegments: [],
+      drawingCanvas: null,
+      drawingCtx: null,
+      drawingBaseImage: null,
+      drawingDataUrl: null,
+      drawingDirty: false,
+      drawingVisible: false,
+      drawingActions: [],
+      drawingCommittedActions: [],
       fogBaseImage: null,
       fogActions: [],
       fogCommittedActions: [],
@@ -510,7 +759,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       dungeonUndoStack: []
     };
     slide.markersUndoStack.push(cloneValue(slide.markers));
-    slide.cameraUndoStack.push(snapshotCamera(slide.camera));
+    slide.cameraUndoStack.push(snapshotCamera(slide.camera, slide.cameraAspect, slide.cameraZoom));
     slide.gridUndoStack.push(snapshotGrid(slide.grid));
     slide.aoeUndoStack.push(snapshotAoe(slide));
     slide.dungeonUndoStack.push(cloneValue(slide.dungeonSegments));
@@ -551,9 +800,12 @@ import { escapeHtml } from './ui/escape-html.mjs';
       currentIndex: slides.findIndex(s => s.id === currentSlideId),
       fogViewOpacity: fogViewOpacity,
       gridColor: gridColor,
+      annotationTextSize,
+      annotationTextRotation,
+      handPosition,
       diceHistory: diceHistory,
       dicePool: dicePool,
-      initiative: { combatants: initiative.combatants, currentCombatantId: initiative.currentCombatantId, round: initiative.round, showOnDisplay: initiative.showOnDisplay },
+      initiative: { combatants: initiative.combatants, columns: initiative.columns, currentCombatantId: initiative.currentCombatantId, round: initiative.round, showOnDisplay: initiative.showOnDisplay, layout: initiative.layout, window: initiative.window },
       slides: slides.map(s => ({
         name: s.name,
         mapDataUrl: s.mapDataUrl,
@@ -561,14 +813,21 @@ import { escapeHtml } from './ui/escape-html.mjs';
         thumb: s.thumb,
         markers: s.markers,
         camera: s.camera,
+        cameraAspect: s.cameraAspect,
+        cameraZoom: s.cameraZoom,
         grid: s.grid,
         aoeShapes: s.aoeShapes,
         aoeCalibration: s.aoeCalibration,
+        aoeCalibrationRefValue: s.aoeCalibrationRefValue,
+        aoeCalibrationRefZoom: s.aoeCalibrationRefZoom,
         aoeZoomLock: s.aoeZoomLock,
         aoeZoomLockRefCalibration: s.aoeZoomLockRefCalibration,
         aoeZoomLockRefCamW: s.aoeZoomLockRefCamW,
+        aoeZoomLockRefZoom: s.aoeZoomLockRefZoom,
         aoeZoomLockRefCamera: s.aoeZoomLockRefCamera,
-        dungeonSegments: s.dungeonSegments
+        dungeonSegments: s.dungeonSegments,
+        drawingDataUrl: getDrawingDataUrl(s),
+        drawingVisible: s.drawingVisible === true
       }))
     };
   }
@@ -607,10 +866,16 @@ import { escapeHtml } from './ui/escape-html.mjs';
   }
 
   async function restoreSession(data) {
+    const rawHandPosition = data.handPosition || {};
+    handPosition = {
+      x: (typeof rawHandPosition.x === 'number' && isFinite(rawHandPosition.x)) ? Math.max(0, Math.min(1, rawHandPosition.x)) : 0,
+      y: (typeof rawHandPosition.y === 'number' && isFinite(rawHandPosition.y)) ? Math.max(0, Math.min(1, rawHandPosition.y)) : 1,
+    };
     const restored = [];
     for (const sd of data.slides) {
       const mapImg = await loadImageFromDataUrl(sd.mapDataUrl);
       const fogImg = await loadImageFromDataUrl(sd.fogDataUrl);
+      const drawingImg = sd.drawingDataUrl ? await loadImageFromDataUrl(sd.drawingDataUrl) : null;
 
       const mapCanvas = document.createElement('canvas');
       mapCanvas.width = mapImg.naturalWidth;
@@ -629,14 +894,31 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const safeOpacity = (typeof rawGrid.opacity === 'number' && isFinite(rawGrid.opacity)) ? Math.max(0, Math.min(1, rawGrid.opacity)) : 1;
 
       const rawCamera = sd.camera || {};
+      const defaultCamera = fitCameraToAspect(mapCanvas.width, mapCanvas.height);
       const safeCamera = {
-        w: (typeof rawCamera.w === 'number' && rawCamera.w > 0) ? Math.min(rawCamera.w, mapCanvas.width) : mapCanvas.width,
-        h: (typeof rawCamera.h === 'number' && rawCamera.h > 0) ? Math.min(rawCamera.h, mapCanvas.height) : mapCanvas.height,
+        w: (typeof rawCamera.w === 'number' && rawCamera.w > 0) ? Math.min(rawCamera.w, mapCanvas.width) : defaultCamera.w,
+        h: (typeof rawCamera.h === 'number' && rawCamera.h > 0) ? Math.min(rawCamera.h, mapCanvas.height) : defaultCamera.h,
       };
-      safeCamera.x = (typeof rawCamera.x === 'number' && isFinite(rawCamera.x)) ? Math.max(0, Math.min(rawCamera.x, mapCanvas.width - safeCamera.w)) : 0;
-      safeCamera.y = (typeof rawCamera.y === 'number' && isFinite(rawCamera.y)) ? Math.max(0, Math.min(rawCamera.y, mapCanvas.height - safeCamera.h)) : 0;
+      safeCamera.x = (typeof rawCamera.x === 'number' && isFinite(rawCamera.x)) ? Math.max(0, Math.min(rawCamera.x, mapCanvas.width - safeCamera.w)) : defaultCamera.x;
+      safeCamera.y = (typeof rawCamera.y === 'number' && isFinite(rawCamera.y)) ? Math.max(0, Math.min(rawCamera.y, mapCanvas.height - safeCamera.h)) : defaultCamera.y;
+      const safeCameraAspect = typeof sd.cameraAspect === 'string' && (sd.cameraAspect in CAMERA_ASPECTS || sd.cameraAspect === 'source' || sd.cameraAspect === 'custom')
+        ? sd.cameraAspect
+        : inferCameraAspect(safeCamera, mapCanvas.width, mapCanvas.height);
+      const restoredAspect = safeCameraAspect === 'source' ? mapCanvas.width / mapCanvas.height
+        : safeCameraAspect === 'custom' ? safeCamera.w / safeCamera.h
+          : CAMERA_ASPECTS[safeCameraAspect];
+      const fittedCamera = fitCameraToAspect(mapCanvas.width, mapCanvas.height, restoredAspect);
+      const safeCameraZoom = (typeof sd.cameraZoom === 'number' && isFinite(sd.cameraZoom))
+        ? Math.max(100, Math.min(2000, sd.cameraZoom))
+        : Math.max(100, Math.min(2000, fittedCamera.w / safeCamera.w * 100));
 
-      const safeAoeCalibration = (typeof sd.aoeCalibration === 'number' && sd.aoeCalibration >= 10 && isFinite(sd.aoeCalibration)) ? sd.aoeCalibration : 100;
+      const safeAoeCalibration = (typeof sd.aoeCalibration === 'number' && sd.aoeCalibration > 0 && isFinite(sd.aoeCalibration)) ? sd.aoeCalibration : 100;
+      const safeAoeCalibrationRefValue = (typeof sd.aoeCalibrationRefValue === 'number' && sd.aoeCalibrationRefValue > 0 && isFinite(sd.aoeCalibrationRefValue))
+        ? sd.aoeCalibrationRefValue
+        : safeAoeCalibration;
+      const safeAoeCalibrationRefZoom = (typeof sd.aoeCalibrationRefZoom === 'number' && sd.aoeCalibrationRefZoom > 0 && isFinite(sd.aoeCalibrationRefZoom))
+        ? sd.aoeCalibrationRefZoom
+        : safeCameraZoom;
       const AOE_TYPES = ['circle', 'square', 'cone'];
 
       const rawLockCam = sd.aoeZoomLockRefCamera;
@@ -646,8 +928,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
         : null;
       const safeLockRefCalibration = (typeof sd.aoeZoomLockRefCalibration === 'number' && sd.aoeZoomLockRefCalibration > 0 && isFinite(sd.aoeZoomLockRefCalibration)) ? sd.aoeZoomLockRefCalibration : null;
       const safeLockRefCamW = (typeof sd.aoeZoomLockRefCamW === 'number' && sd.aoeZoomLockRefCamW > 0 && isFinite(sd.aoeZoomLockRefCamW)) ? sd.aoeZoomLockRefCamW : null;
+      const derivedLockRefZoom = safeLockCam
+        ? fitCameraToAspect(mapCanvas.width, mapCanvas.height, safeLockCam.w / safeLockCam.h).w / safeLockCam.w * 100
+        : null;
+      const safeLockRefZoom = (typeof sd.aoeZoomLockRefZoom === 'number' && sd.aoeZoomLockRefZoom > 0 && isFinite(sd.aoeZoomLockRefZoom))
+        ? sd.aoeZoomLockRefZoom
+        : derivedLockRefZoom;
       // zoom-lock only makes sense if every piece of its reference survived sanitization intact
-      const safeZoomLock = !!sd.aoeZoomLock && !!safeLockCam && safeLockRefCalibration !== null && safeLockRefCamW !== null;
+      const safeZoomLock = !!sd.aoeZoomLock && !!safeLockCam && safeLockRefCalibration !== null && safeLockRefCamW !== null && safeLockRefZoom !== null;
 
       const slide = {
         id: nextSlideId++,
@@ -666,6 +954,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
           size: (typeof m.size === 'number' && isFinite(m.size)) ? Math.max(6, Math.min(60, m.size)) : 12,
         })) : [],
         camera: safeCamera,
+        cameraAspect: safeCameraAspect,
+        cameraZoom: safeCameraZoom,
         grid: { enabled: !!rawGrid.enabled, size: safeSize, offsetX: clampOffset(rawGrid.offsetX), offsetY: clampOffset(rawGrid.offsetY), opacity: safeOpacity },
         aoeShapes: Array.isArray(sd.aoeShapes) ? sd.aoeShapes.map(a => ({
           id: nextAoeId++,
@@ -678,9 +968,12 @@ import { escapeHtml } from './ui/escape-html.mjs';
           visible: (typeof a.visible === 'boolean') ? a.visible : true
         })) : [],
         aoeCalibration: safeAoeCalibration,
+        aoeCalibrationRefValue: safeAoeCalibrationRefValue,
+        aoeCalibrationRefZoom: safeAoeCalibrationRefZoom,
         aoeZoomLock: safeZoomLock,
         aoeZoomLockRefCalibration: safeZoomLock ? safeLockRefCalibration : null,
         aoeZoomLockRefCamW: safeZoomLock ? safeLockRefCamW : null,
+        aoeZoomLockRefZoom: safeZoomLock ? safeLockRefZoom : null,
         aoeZoomLockRefCamera: safeZoomLock ? safeLockCam : null,
         dungeonSegments: Array.isArray(sd.dungeonSegments) ? sd.dungeonSegments.map(seg => ({
           id: nextDungeonId++,
@@ -693,6 +986,14 @@ import { escapeHtml } from './ui/escape-html.mjs';
             points: Array.isArray(st.points) ? st.points.filter(pt => pt && typeof pt.x === 'number' && typeof pt.y === 'number' && isFinite(pt.x) && isFinite(pt.y)) : []
           })).filter(st => st.points.length > 0) : []
         })).map((segment, index) => ({ ...segment, number: segment.number || index + 1 })) : [],
+        drawingCanvas: null,
+        drawingCtx: null,
+        drawingBaseImage: drawingImg,
+        drawingDataUrl: sd.drawingDataUrl || null,
+        drawingDirty: false,
+        drawingVisible: sd.drawingVisible === true,
+        drawingActions: [],
+        drawingCommittedActions: [],
         fogBaseImage: fogImg,
         fogActions: [],
         fogCommittedActions: [],
@@ -704,8 +1005,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
         aoeUndoStack: [],
         dungeonUndoStack: []
       };
+      if (drawingImg) ensureDrawingLayer(slide);
       slide.markersUndoStack.push(cloneValue(slide.markers));
-      slide.cameraUndoStack.push(snapshotCamera(slide.camera));
+      slide.cameraUndoStack.push(snapshotCamera(slide.camera, slide.cameraAspect, slide.cameraZoom));
       slide.gridUndoStack.push(snapshotGrid(slide.grid));
       slide.aoeUndoStack.push(snapshotAoe(slide));
       slide.dungeonUndoStack.push(cloneValue(slide.dungeonSegments));
@@ -723,6 +1025,15 @@ import { escapeHtml } from './ui/escape-html.mjs';
     if (data.gridColor) {
       gridColor = data.gridColor;
       gridColorEl.value = gridColor;
+    }
+    if (typeof data.annotationTextSize === 'number' && isFinite(data.annotationTextSize)) {
+      annotationTextSize = Math.max(8, Math.min(40, data.annotationTextSize));
+      annotationTextSizeEl.value = annotationTextSize;
+      annotationTextSizeLabel.textContent = annotationTextSize + 'px';
+    }
+    if ([0, 90, 180, 270].includes(data.annotationTextRotation)) {
+      annotationTextRotation = data.annotationTextRotation;
+      annotationTextRotateBtn.textContent = 'Rotate display text 90° (' + annotationTextRotation + '°)';
     }
 
     if (Array.isArray(data.diceHistory)) {
@@ -748,6 +1059,31 @@ import { escapeHtml } from './ui/escape-html.mjs';
     renderDicePool();
 
     const rawInit = data.initiative || {};
+    const restoredColumnEntries = (Array.isArray(rawInit.columns) ? rawInit.columns : [])
+      .filter(column => column && typeof column.name === 'string' && column.name.trim())
+      .map(column => ({
+        oldId: String(column.id),
+        column: {
+          id: nextInitiativeColumnId++,
+          name: column.name.trim().slice(0, 40),
+          displayed: column.displayed === true,
+        },
+      }));
+    const safeInitiativeColumns = restoredColumnEntries.map(entry => entry.column);
+    const rawInitiativeLayout = rawInit.layout || {};
+    const rawInitiativeWindow = rawInit.window || {};
+    const safeInitiativeLayout = {
+      x: (typeof rawInitiativeLayout.x === 'number' && isFinite(rawInitiativeLayout.x)) ? Math.max(0, Math.min(0.95, rawInitiativeLayout.x)) : 0.76,
+      y: (typeof rawInitiativeLayout.y === 'number' && isFinite(rawInitiativeLayout.y)) ? Math.max(0, Math.min(0.95, rawInitiativeLayout.y)) : 0.03,
+      width: (typeof rawInitiativeLayout.width === 'number' && isFinite(rawInitiativeLayout.width)) ? Math.max(150, Math.min(600, rawInitiativeLayout.width)) : 220,
+      rotation: [0, 90, 180, 270].includes(rawInitiativeLayout.rotation) ? rawInitiativeLayout.rotation : 0,
+    };
+    const safeInitiativeWindow = {
+      x: (typeof rawInitiativeWindow.x === 'number' && isFinite(rawInitiativeWindow.x)) ? Math.max(0, rawInitiativeWindow.x) : 18,
+      y: (typeof rawInitiativeWindow.y === 'number' && isFinite(rawInitiativeWindow.y)) ? Math.max(0, rawInitiativeWindow.y) : 18,
+      width: (typeof rawInitiativeWindow.width === 'number' && isFinite(rawInitiativeWindow.width)) ? Math.max(300, rawInitiativeWindow.width) : 420,
+      height: (typeof rawInitiativeWindow.height === 'number' && isFinite(rawInitiativeWindow.height)) ? Math.max(260, rawInitiativeWindow.height) : 640,
+    };
     const rawCombatants = Array.isArray(rawInit.combatants)
       ? rawInit.combatants.filter(c => c && typeof c.name === 'string' && typeof c.score === 'number' && isFinite(c.score))
       : [];
@@ -764,21 +1100,40 @@ import { escapeHtml } from './ui/escape-html.mjs';
       } else {
         hpLog = [];
       }
+      const customValues = {};
+      if (c.customValues && typeof c.customValues === 'object') {
+        restoredColumnEntries.forEach(({ oldId, column }) => {
+          const value = c.customValues[oldId];
+          customValues[column.id] = (typeof value === 'string' || typeof value === 'number')
+            ? String(value).slice(0, 500)
+            : '';
+        });
+      }
       return {
         id: nextCombatantId++,
         name: c.name,
         score: c.score,
+        order: (typeof c.order === 'number' && isFinite(c.order)) ? c.order : null,
         ac: (typeof c.ac === 'number' && isFinite(c.ac)) ? c.ac : null,
-        hpLog
+        hpLog,
+        customValues,
+        reactionUsed: c.reactionUsed === true,
       };
     });
+    const restoredOrder = safeCombatants.every(combatant => combatant.order !== null)
+      ? [...safeCombatants].sort((first, second) => first.order - second.order)
+      : [...safeCombatants].sort((first, second) => second.score - first.score);
+    restoredOrder.forEach((combatant, index) => { combatant.order = index; });
     initiative = {
       combatants: safeCombatants,
+      columns: safeInitiativeColumns,
       // ids were just reassigned above, so match the previously-current combatant by its position
       // in the saved array instead — otherwise every load would silently reset whose turn it is.
       currentCombatantId: (currentIdxInRaw >= 0 && safeCombatants[currentIdxInRaw]) ? safeCombatants[currentIdxInRaw].id : null,
       round: (typeof rawInit.round === 'number' && rawInit.round >= 1) ? Math.floor(rawInit.round) : 1,
-      showOnDisplay: !!rawInit.showOnDisplay
+      showOnDisplay: !!rawInit.showOnDisplay,
+      layout: safeInitiativeLayout,
+      window: safeInitiativeWindow,
     };
     renderInitiative();
 
@@ -791,6 +1146,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       emptyState.style.display = 'block';
       dimsLabel.textContent = '';
     }
+    if (initiativeFloatingWindow.style.display !== 'none') applyInitiativeWindowGeometry();
     updateDisplayExtras();
   }
 
@@ -927,6 +1283,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
       slideListEl.appendChild(row);
     });
+    syncTruncationTooltips(slideListEl);
   }
 
   function selectSlide(id) {
@@ -952,6 +1309,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
     hideDungeonTooltip();
     const s = cs();
     if (!s) return;
+    universalSelectBtn.style.display = 'block';
+    applyHandPosition();
     const preview = constrainedMapSize(s.mapCanvas.width, s.mapCanvas.height, MAX_CONTROL_PREVIEW_DIMENSION);
     workCanvas.width = preview.width;
     workCanvas.height = preview.height;
@@ -969,6 +1328,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
     gridOffsetYLabel.textContent = s.grid.offsetY + 'px';
     gridOpacityEl.value = Math.round(((typeof s.grid.opacity === 'number') ? s.grid.opacity : 1) * 100);
     gridOpacityLabel.textContent = gridOpacityEl.value + '%';
+    cameraAspectEl.value = s.cameraAspect;
+    drawVisibleToggle.checked = s.drawingVisible === true;
     updateCalibrationUI();
     renderDungeonSegments();
     renderSlideList();
@@ -986,6 +1347,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       if (slides.length === 0) {
         currentSlideId = null;
         workCanvas.style.display = 'none';
+        universalSelectBtn.style.display = 'none';
         emptyState.style.display = 'block';
         dimsLabel.textContent = '';
       } else {
@@ -1007,6 +1369,18 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const idx = slides.findIndex(s => s.id === currentSlideId);
     const newIdx = (idx + 1) % slides.length;
     selectSlide(slides[newIdx].id);
+  });
+  annotationTextSizeEl.addEventListener('input', () => {
+    annotationTextSize = parseInt(annotationTextSizeEl.value, 10);
+    annotationTextSizeLabel.textContent = annotationTextSize + 'px';
+    redraw();
+  });
+  annotationTextSizeEl.addEventListener('change', () => scheduleAutosave());
+  annotationTextRotateBtn.addEventListener('click', () => {
+    annotationTextRotation = (annotationTextRotation + 90) % 360;
+    annotationTextRotateBtn.textContent = 'Rotate display text 90° (' + annotationTextRotation + '°)';
+    redraw();
+    scheduleAutosave();
   });
 
   // ---------- AoE templates ----------
@@ -1096,7 +1470,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   // never referenced by drawCompositeToCtx, so there's no path for it to reach the display.
   function updateCalibrationUI() {
     const s = cs();
-    if (!s) return;
+    if (!s) { calibSnapZoomBtn.style.display = 'none'; return; }
     if (s.grid.enabled) {
       aoeCalibrationGridNote.style.display = 'block';
       aoeCalibrationGridNote.textContent = "Using this map's grid: 1 square = 5ft (" + Math.round(s.grid.size) + 'px).';
@@ -1106,7 +1480,6 @@ import { escapeHtml } from './ui/escape-html.mjs';
       aoeCalibrationManualRow.style.display = 'block';
       aoeCalibrationEl.value = Math.round(s.aoeCalibration);
       aoeZoomLockToggle.checked = !!s.aoeZoomLock;
-      calibSnapZoomBtn.style.display = (s.aoeZoomLock && s.aoeZoomLockRefCamera) ? 'block' : 'none';
       // Locked calibration is a live-derived readout, not directly editable — except while a fresh
       // calibration is actively in progress (the reference square), which temporarily overrides it.
       aoeCalibrationEl.disabled = !!s.aoeZoomLock && !calibShowingSquare;
@@ -1192,6 +1565,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const sub = document.createElement('div');
       sub.className = 'row-sub';
       sub.textContent = seg.notes ? (seg.notes.length > 44 ? seg.notes.slice(0, 44) + '…' : seg.notes) : 'No notes yet';
+      if (seg.notes && seg.notes.length > 44) sub.title = seg.notes;
       main.appendChild(title);
       main.appendChild(sub);
       row.appendChild(swatch);
@@ -1370,47 +1744,253 @@ import { escapeHtml } from './ui/escape-html.mjs';
   }
 
   let expandedHpLogIds = new Set(); // which combatants currently have their HP log expanded (session-only, not persisted)
+  let expandedInitiativeCardIds = new Set();
+  let initiativePointerDrag = null;
+
+  function normalizeInitiativeOrder(combatants = sortedCombatants()) {
+    combatants.forEach((combatant, index) => { combatant.order = index; });
+  }
+
+  function insertCombatantByScore(combatant) {
+    const ordered = sortedCombatants();
+    const insertAt = ordered.findIndex(existing => existing.score < combatant.score);
+    ordered.splice(insertAt < 0 ? ordered.length : insertAt, 0, combatant);
+    normalizeInitiativeOrder(ordered);
+    initiative.combatants.push(combatant);
+  }
+
+  function reorderCombatant(draggedId, targetId) {
+    const ordered = sortedCombatants();
+    const fromIndex = ordered.findIndex(combatant => combatant.id === draggedId);
+    const targetIndex = ordered.findIndex(combatant => combatant.id === targetId);
+    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return;
+    const [dragged] = ordered.splice(fromIndex, 1);
+    ordered.splice(targetIndex, 0, dragged);
+    normalizeInitiativeOrder(ordered);
+  }
+
+  function initiativePanelHtml() {
+    const sorted = sortedCombatants();
+    const currentId = effectiveCurrentId();
+    const displayedColumns = initiative.columns.filter(column => column.displayed);
+    const gridColumns = 'max-content minmax(max-content,1fr) ' + displayedColumns.map(() => 'minmax(3ch,1fr)').join(' ') + ' max-content';
+    let html = '<div class="init-round">Round ' + initiative.round + '</div>';
+    html += '<div class="init-table" style="grid-template-columns:' + gridColumns + '">';
+    if (displayedColumns.length) {
+      html += '<div class="init-row init-head">' +
+        '<span class="init-cell init-reaction"></span><span class="init-cell init-name">Name</span>' + displayedColumns.map(column =>
+          '<span class="init-cell init-custom-cell">' + escapeHtml(column.name) + '</span>'
+        ).join('') + '<span class="init-cell">Init</span></div>';
+    }
+    sorted.forEach((combatant) => {
+      const current = combatant.id === currentId;
+      html += '<div class="init-row' + (current ? ' init-current' : '') + '">' +
+        '<span class="init-cell init-reaction' + (combatant.reactionUsed ? ' used' : '') + '" role="img" aria-label="Reaction ' + (combatant.reactionUsed ? 'used' : 'available') + '">✦</span>' +
+        '<span class="init-cell init-name">' + (current ? '▶ ' : '') + escapeHtml(combatant.name) + '</span>' +
+        displayedColumns.map(column => '<span class="init-cell init-custom-cell">' + escapeHtml(combatant.customValues?.[column.id] || '') + '</span>').join('') +
+        '<span class="init-cell">' + combatant.score + '</span></div>';
+    });
+    return html + '</div>';
+  }
+
+  function renderInitiativeColumns() {
+    initiativeColumnList.innerHTML = '';
+    initiative.columns.forEach(column => {
+      const row = document.createElement('div');
+      row.className = 'initiative-column-row';
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.maxLength = 40;
+      nameInput.value = column.name;
+      nameInput.setAttribute('aria-label', 'Custom column name');
+      nameInput.addEventListener('change', () => {
+        const name = nameInput.value.trim();
+        if (!name) { nameInput.value = column.name; return; }
+        column.name = name;
+        renderInitiativeLayoutOverlay();
+        updateDisplayExtras();
+        scheduleAutosave();
+      });
+      const displayLabel = document.createElement('label');
+      displayLabel.className = 'checkbox-row';
+      const displayToggle = document.createElement('input');
+      displayToggle.type = 'checkbox';
+      displayToggle.checked = column.displayed;
+      displayToggle.setAttribute('aria-label', 'Show ' + column.name + ' on display');
+      displayToggle.addEventListener('change', () => {
+        column.displayed = displayToggle.checked;
+        renderInitiativeLayoutOverlay();
+        updateDisplayExtras();
+        scheduleAutosave();
+      });
+      displayLabel.appendChild(displayToggle);
+      displayLabel.append(' Display');
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.textContent = '×';
+      removeButton.title = 'Remove ' + column.name;
+      removeButton.setAttribute('aria-label', 'Remove custom column ' + column.name);
+      removeButton.addEventListener('click', () => {
+        initiative.columns = initiative.columns.filter(item => item.id !== column.id);
+        initiative.combatants.forEach(combatant => { delete combatant.customValues?.[column.id]; });
+        renderInitiative();
+        updateDisplayExtras();
+        scheduleAutosave();
+      });
+      row.appendChild(nameInput);
+      row.appendChild(displayLabel);
+      row.appendChild(removeButton);
+      initiativeColumnList.appendChild(row);
+    });
+  }
+
+  function initiativePreviewGeometry() {
+    const canvasRect = workCanvas.getBoundingClientRect();
+    const areaRect = canvasArea.getBoundingClientRect();
+    const displayWindow = displayWindowManager?.getWindow();
+    const referenceWidth = displayWindow && !displayWindow.closed ? displayWindow.innerWidth : 1024;
+    const previewScale = canvasRect.width / referenceWidth;
+    return { canvasRect, areaRect, referenceWidth, previewScale };
+  }
+
+  function renderInitiativeLayoutOverlay() {
+    const visible = (initiativeFloatingWindow.style.display !== 'none' || universalSelectActive) && initiative.combatants.length > 0 && workCanvas.style.display !== 'none';
+    initiativeLayoutOverlay.style.display = visible ? 'block' : 'none';
+    if (!visible) return;
+    const { canvasRect, areaRect, previewScale } = initiativePreviewGeometry();
+    initiativeLayoutPreview.innerHTML = initiativePanelHtml();
+    const canvasLeft = canvasRect.left - areaRect.left;
+    const canvasTop = canvasRect.top - areaRect.top;
+    const desiredWidth = Math.min(canvasRect.width, Math.max(120, initiative.layout.width * previewScale));
+    initiativeLayoutOverlay.style.width = desiredWidth + 'px';
+    initiativeLayoutOverlay.style.width = Math.min(canvasRect.width, Math.max(desiredWidth, initiativeLayoutOverlay.scrollWidth)) + 'px';
+    const overlayWidth = initiativeLayoutOverlay.offsetWidth;
+    const overlayHeight = initiativeLayoutOverlay.offsetHeight;
+    const desiredLeft = canvasLeft + initiative.layout.x * canvasRect.width;
+    const desiredTop = canvasTop + initiative.layout.y * canvasRect.height;
+    initiativeLayoutOverlay.style.left = Math.max(canvasLeft, Math.min(canvasLeft + canvasRect.width - overlayWidth, desiredLeft)) + 'px';
+    initiativeLayoutOverlay.style.top = Math.max(canvasTop, Math.min(canvasTop + canvasRect.height - overlayHeight, desiredTop)) + 'px';
+    initiativeLayoutOverlay.style.transform = 'none';
+    initiativeLayoutRotateHandle.title = 'Rotate display 90° (currently ' + initiative.layout.rotation + '°)';
+    syncTruncationTooltips(initiativeLayoutOverlay);
+  }
 
   function renderInitiative() {
     roundLabel.textContent = initiative.round;
     initiativeShowOnDisplay.checked = initiative.showOnDisplay;
+    renderInitiativeColumns();
+    nextTurnBtn.textContent = 'Next turn · Round ' + initiative.round;
+    nextTurnBtn.style.display = initiative.combatants.length > 0 && workCanvas.style.display !== 'none' ? 'block' : 'none';
     const currentId = effectiveCurrentId();
     combatantList.innerHTML = '';
     sortedCombatants().forEach((c) => {
       const row = document.createElement('div');
       row.className = 'combatant-row' + (c.id === currentId ? ' current-turn' : '');
+      row.dataset.combatantId = c.id;
 
       const top = document.createElement('div');
       top.className = 'combatant-top';
+      const dragHandle = document.createElement('span');
+      dragHandle.className = 'combatant-drag-handle';
+      dragHandle.textContent = '⋮⋮';
+      dragHandle.title = 'Drag to reorder';
+      dragHandle.setAttribute('role', 'button');
+      dragHandle.setAttribute('aria-label', 'Drag ' + c.name + ' to reorder initiative');
+      dragHandle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        initiativePointerDrag = { id: c.id, targetId: c.id };
+        row.classList.add('dragging');
+      });
       const main = document.createElement('div');
       main.className = 'row-main';
       const title = document.createElement('div');
       title.className = 'row-title';
       title.textContent = (c.id === currentId ? '▶ ' : '') + c.name;
-      const sub = document.createElement('div');
-      sub.className = 'row-sub';
-      sub.textContent = 'Initiative ' + c.score;
       main.appendChild(title);
-      main.appendChild(sub);
+
+      const reactionButton = document.createElement('button');
+      reactionButton.type = 'button';
+      reactionButton.className = 'reaction-button' + (c.reactionUsed ? ' used' : '');
+      reactionButton.textContent = '✦';
+      reactionButton.title = c.reactionUsed ? 'Reaction used; click to restore' : 'Mark reaction used';
+      reactionButton.setAttribute('aria-label', (c.reactionUsed ? 'Restore reaction for ' : 'Mark reaction used for ') + c.name);
+      reactionButton.setAttribute('aria-pressed', String(c.reactionUsed));
+      reactionButton.addEventListener('click', () => {
+        c.reactionUsed = !c.reactionUsed;
+        renderInitiative();
+        scheduleAutosave();
+      });
+
+      const scoreCompact = document.createElement('span');
+      scoreCompact.className = 'combatant-score-compact';
+      const initiativeInput = document.createElement('input');
+      initiativeInput.type = 'number';
+      initiativeInput.className = 'initiative-score-input';
+      initiativeInput.value = c.score;
+      initiativeInput.setAttribute('aria-label', 'Initiative for ' + c.name);
+      initiativeInput.addEventListener('pointerdown', event => event.stopPropagation());
+      initiativeInput.addEventListener('dragstart', event => event.preventDefault());
+      initiativeInput.addEventListener('input', () => {
+        const value = parseInt(initiativeInput.value, 10);
+        if (!isFinite(value)) return;
+        c.score = value;
+        updateDisplayExtras();
+        renderInitiativeLayoutOverlay();
+      });
+      initiativeInput.addEventListener('change', () => {
+        const value = parseInt(initiativeInput.value, 10);
+        if (!isFinite(value)) { initiativeInput.value = c.score; return; }
+        c.score = value;
+        normalizeInitiativeOrder(sortCombatantsByScore(initiative.combatants));
+        renderInitiative();
+        updateDisplayExtras();
+        scheduleAutosave();
+      });
+      scoreCompact.appendChild(initiativeInput);
+
+      const collapseBtn = document.createElement('button');
+      collapseBtn.className = 'combatant-collapse';
+      collapseBtn.textContent = expandedInitiativeCardIds.has(c.id) ? '▴' : '▾';
+      collapseBtn.title = expandedInitiativeCardIds.has(c.id) ? 'Hide combatant details' : 'Show AC, HP, and custom fields';
+      collapseBtn.setAttribute('aria-label', (expandedInitiativeCardIds.has(c.id) ? 'Hide details for ' : 'Show details for ') + c.name);
+      collapseBtn.setAttribute('aria-expanded', String(expandedInitiativeCardIds.has(c.id)));
+      collapseBtn.addEventListener('click', () => {
+        if (expandedInitiativeCardIds.has(c.id)) expandedInitiativeCardIds.delete(c.id);
+        else expandedInitiativeCardIds.add(c.id);
+        renderInitiative();
+      });
       const removeBtn = document.createElement('button');
+      removeBtn.className = 'combatant-remove';
       removeBtn.textContent = '✕';
       removeBtn.addEventListener('click', () => {
         initiative.combatants = initiative.combatants.filter(x => x.id !== c.id);
+        normalizeInitiativeOrder(sortedCombatants());
         if (initiative.currentCombatantId === c.id) initiative.currentCombatantId = null;
         renderInitiative();
         updateDisplayExtras();
         scheduleAutosave();
       });
+      top.appendChild(dragHandle);
+      top.appendChild(collapseBtn);
       top.appendChild(main);
+      top.appendChild(reactionButton);
+      top.appendChild(scoreCompact);
       top.appendChild(removeBtn);
 
+      const details = document.createElement('div');
+      details.className = 'combatant-details';
+      details.hidden = !expandedInitiativeCardIds.has(c.id);
       const stats = document.createElement('div');
       stats.className = 'combatant-stats';
 
+      const acField = document.createElement('label');
+      acField.className = 'armor-class-field';
       const acLabel = document.createElement('span');
       acLabel.textContent = 'AC';
       const acInput = document.createElement('input');
       acInput.type = 'number';
+      acInput.className = 'armor-class-input';
       acInput.placeholder = '—';
       acInput.value = (typeof c.ac === 'number') ? c.ac : '';
       const commitAc = () => {
@@ -1420,17 +2000,26 @@ import { escapeHtml } from './ui/escape-html.mjs';
       };
       acInput.addEventListener('change', commitAc);
 
+      const hpControl = document.createElement('div');
+      hpControl.className = 'hp-control';
+      const hpHeader = document.createElement('div');
+      hpHeader.className = 'hp-control-header';
       const hpLabel = document.createElement('span');
-      hpLabel.textContent = 'HP';
-      const hpReadout = document.createElement('span');
+      hpLabel.className = 'hp-control-label';
+      hpLabel.textContent = 'Hit points';
+      const hpReadout = document.createElement('strong');
       hpReadout.className = 'hp-readout';
       const currentHp = computeHp(c);
       hpReadout.textContent = (currentHp === null) ? '—' : currentHp;
 
       const logCount = (c.hpLog || []).length;
       const expandBtn = document.createElement('button');
-      expandBtn.textContent = expandedHpLogIds.has(c.id) ? '▴' : ('▾' + (logCount ? ' ' + logCount : ''));
-      expandBtn.title = 'Show/hide the HP log for this combatant';
+      expandBtn.className = 'hp-history-toggle';
+      expandBtn.textContent = expandedHpLogIds.has(c.id) ? '▴' : '▾';
+      expandBtn.title = (expandedHpLogIds.has(c.id) ? 'Hide' : 'Show') + ' HP history' + (logCount ? ' (' + logCount + ')' : '');
+      expandBtn.setAttribute('aria-label', (expandedHpLogIds.has(c.id) ? 'Hide' : 'Show') + ' HP history for ' + c.name + (logCount ? ', ' + logCount + ' entries' : ''));
+      expandBtn.setAttribute('aria-expanded', String(expandedHpLogIds.has(c.id)));
+      expandBtn.disabled = logCount === 0;
       expandBtn.addEventListener('click', () => {
         if (expandedHpLogIds.has(c.id)) expandedHpLogIds.delete(c.id); else expandedHpLogIds.add(c.id);
         renderInitiative();
@@ -1438,33 +2027,92 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
       const hpInput = document.createElement('input');
       hpInput.type = 'text';
-      hpInput.placeholder = '+/- or set';
-      const commitHp = () => {
-        const entry = parseHpEntry(hpInput.value);
+      hpInput.placeholder = currentHp === null ? 'Starting HP' : 'Amount';
+      hpInput.setAttribute('aria-label', 'HP amount for ' + c.name);
+      const commitHpValue = (rawValue) => {
+        const entry = parseHpEntry(rawValue);
         if (entry) {
           c.hpLog = c.hpLog || [];
           c.hpLog.push(entry);
           hpInput.value = '';
-          expandedHpLogIds.add(c.id); // reveal the log automatically right after logging a new entry
           renderInitiative();
           updateDisplayExtras();
           scheduleAutosave();
         }
       };
+      const commitHp = () => commitHpValue(hpInput.value);
       hpInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); commitHp(); hpInput.blur(); }
       });
       hpInput.addEventListener('blur', commitHp);
 
-      stats.appendChild(acLabel);
-      stats.appendChild(acInput);
-      stats.appendChild(hpLabel);
-      stats.appendChild(hpReadout);
-      stats.appendChild(expandBtn);
-      stats.appendChild(hpInput);
+      const hpOperations = document.createElement('span');
+      hpOperations.className = 'hp-operation-buttons';
+      const hpOperationDefinitions = currentHp === null
+        ? [{ symbol: '=', label: 'Set HP', prefix: '' }]
+        : [
+            { symbol: '+', label: 'Add HP', prefix: '+' },
+            { symbol: '−', label: 'Subtract HP', prefix: '-' },
+            { symbol: '=', label: 'Set HP', prefix: '' },
+          ];
+      for (const operation of hpOperationDefinitions) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = operation.symbol;
+        button.title = operation.label;
+        button.setAttribute('aria-label', operation.label + ' for ' + c.name);
+        button.addEventListener('pointerdown', event => event.preventDefault());
+        button.addEventListener('click', () => {
+          const amount = Math.abs(parseInt(hpInput.value, 10));
+          if (!isFinite(amount)) return;
+          commitHpValue(operation.prefix + amount);
+        });
+        hpOperations.appendChild(button);
+      }
+
+      acField.appendChild(acLabel);
+      acField.appendChild(acInput);
+      hpHeader.appendChild(hpLabel);
+      hpHeader.appendChild(hpReadout);
+      hpHeader.appendChild(expandBtn);
+      const hpActions = document.createElement('div');
+      hpActions.className = 'hp-control-actions';
+      hpActions.appendChild(hpInput);
+      hpActions.appendChild(hpOperations);
+      hpControl.appendChild(hpHeader);
+      hpControl.appendChild(hpActions);
+      stats.appendChild(acField);
+      stats.appendChild(hpControl);
 
       row.appendChild(top);
-      row.appendChild(stats);
+      if (initiative.columns.length) {
+        const customValues = document.createElement('div');
+        customValues.className = 'combatant-custom-values';
+        initiative.columns.forEach(column => {
+          const field = document.createElement('div');
+          field.className = 'combatant-custom-value';
+          const label = document.createElement('label');
+          label.textContent = column.name;
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.maxLength = 500;
+          input.value = c.customValues?.[column.id] || '';
+          input.setAttribute('aria-label', column.name + ' for ' + c.name);
+          input.addEventListener('input', () => {
+            c.customValues = c.customValues || {};
+            c.customValues[column.id] = input.value;
+            renderInitiativeLayoutOverlay();
+            updateDisplayExtras();
+          });
+          input.addEventListener('change', () => scheduleAutosave());
+          field.appendChild(label);
+          field.appendChild(input);
+          customValues.appendChild(field);
+        });
+        row.appendChild(customValues);
+      }
+      details.appendChild(stats);
+      row.appendChild(details);
 
       if (expandedHpLogIds.has(c.id) && logCount) {
         const logRow = document.createElement('div');
@@ -1487,18 +2135,48 @@ import { escapeHtml } from './ui/escape-html.mjs';
           pill.appendChild(del);
           logRow.appendChild(pill);
         });
-        row.appendChild(logRow);
+        hpControl.appendChild(logRow);
       }
 
       combatantList.appendChild(row);
     });
+    renderInitiativeLayoutOverlay();
+    syncTruncationTooltips(initiativeFloatingWindow);
   }
+
+  window.addEventListener('pointermove', (event) => {
+    if (!initiativePointerDrag) return;
+    const rows = [...document.querySelectorAll('#combatantList .combatant-row')];
+    const targetRow = rows.reduce((closest, row) => {
+      const rect = row.getBoundingClientRect();
+      const distance = Math.abs(event.clientY - (rect.top + rect.height / 2));
+      return !closest || distance < closest.distance ? { row, distance } : closest;
+    }, null)?.row;
+    rows.forEach(row => row.classList.remove('drag-hint'));
+    if (!targetRow) return;
+    initiativePointerDrag.targetId = Number(targetRow.dataset.combatantId);
+    if (initiativePointerDrag.targetId !== initiativePointerDrag.id) targetRow.classList.add('drag-hint');
+  });
+  function finishInitiativeReorder() {
+    if (!initiativePointerDrag) return;
+    const { id, targetId } = initiativePointerDrag;
+    initiativePointerDrag = null;
+    reorderCombatant(id, targetId);
+    renderInitiative();
+    updateDisplayExtras();
+    scheduleAutosave();
+  }
+  window.addEventListener('pointerup', finishInitiativeReorder);
+  window.addEventListener('pointercancel', () => {
+    initiativePointerDrag = null;
+    document.querySelectorAll('#combatantList .combatant-row').forEach(row => row.classList.remove('drag-hint', 'dragging'));
+  });
 
   addCombatantBtn.addEventListener('click', () => {
     const name = combatantNameEl.value.trim();
     const score = parseInt(combatantScoreEl.value, 10);
     if (!name || !isFinite(score)) return;
-    initiative.combatants.push({ id: nextCombatantId++, name, score, ac: null, hpLog: [] });
+    insertCombatantByScore({ id: nextCombatantId++, name, score, order: 0, ac: null, hpLog: [], customValues: {}, reactionUsed: false });
     combatantNameEl.value = '';
     combatantScoreEl.value = '';
     renderInitiative();
@@ -1512,7 +2190,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const idx = sorted.findIndex(c => c.id === effectiveCurrentId());
     let nextIdx = idx + 1;
     if (nextIdx >= sorted.length) { nextIdx = 0; initiative.round++; }
-    initiative.currentCombatantId = sorted[nextIdx].id;
+    const nextCombatant = sorted[nextIdx];
+    nextCombatant.reactionUsed = false;
+    initiative.currentCombatantId = nextCombatant.id;
     renderInitiative();
     updateDisplayExtras();
     scheduleAutosave();
@@ -1520,7 +2200,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   resetInitiativeBtn.addEventListener('click', () => {
     if (initiative.combatants.length > 0 && !confirm('Clear all combatants and start a new encounter?')) return;
-    initiative = { combatants: [], currentCombatantId: null, round: 1, showOnDisplay: initiative.showOnDisplay };
+    initiative = { combatants: [], columns: initiative.columns, currentCombatantId: null, round: 1, showOnDisplay: initiative.showOnDisplay, layout: initiative.layout, window: initiative.window };
+    expandedInitiativeCardIds.clear();
     renderInitiative();
     updateDisplayExtras();
     scheduleAutosave();
@@ -1531,6 +2212,102 @@ import { escapeHtml } from './ui/escape-html.mjs';
     updateDisplayExtras();
     scheduleAutosave();
   });
+
+  function addInitiativeColumn() {
+    const name = initiativeColumnName.value.trim().slice(0, 40);
+    if (!name) return;
+    initiative.columns.push({ id: nextInitiativeColumnId++, name, displayed: false });
+    initiativeColumnName.value = '';
+    renderInitiative();
+    scheduleAutosave();
+  }
+  addInitiativeColumnBtn.addEventListener('click', addInitiativeColumn);
+  initiativeColumnName.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    addInitiativeColumn();
+  });
+
+  initiativeLayoutRotateHandle.addEventListener('click', (event) => {
+    event.stopPropagation();
+    initiative.layout.rotation = (initiative.layout.rotation + 90) % 360;
+    renderInitiativeLayoutOverlay();
+    updateDisplayExtras();
+    scheduleAutosave();
+  });
+
+  function beginInitiativeLayoutInteraction(event, resizing) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const { canvasRect, referenceWidth, previewScale } = initiativePreviewGeometry();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLayout = { ...initiative.layout };
+
+    const move = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      if (resizing) {
+        initiative.layout.width = Math.max(150, Math.min(600, startLayout.width + deltaX / Math.max(0.01, previewScale)));
+      } else {
+        initiative.layout.x = Math.max(0, Math.min(0.95, startLayout.x + deltaX / canvasRect.width));
+        initiative.layout.y = Math.max(0, Math.min(0.95, startLayout.y + deltaY / canvasRect.height));
+      }
+      renderInitiativeLayoutOverlay();
+      updateDisplayExtras();
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      scheduleAutosave();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  }
+
+  initiativeLayoutOverlay.addEventListener('pointerdown', (event) => {
+    if (universalSelectActive) {
+      event.preventDefault();
+      event.stopPropagation();
+      openInitiativeWindow();
+      setUniversalSelectActive(false);
+      return;
+    }
+    if (event.target === initiativeLayoutRotateHandle || event.target === initiativeLayoutResizeHandle) return;
+    beginInitiativeLayoutInteraction(event, false);
+  });
+  initiativeLayoutResizeHandle.addEventListener('pointerdown', event => beginInitiativeLayoutInteraction(event, true));
+  initiativeLayoutResizeHandle.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    initiative.layout.width = Math.max(150, Math.min(600, initiative.layout.width + (event.key === 'ArrowRight' ? 10 : -10)));
+    renderInitiativeLayoutOverlay();
+    updateDisplayExtras();
+    scheduleAutosave();
+  });
+
+  function applyInitiativePanelLayout(displayWindow, panel) {
+    const layout = initiative.layout;
+    const desiredLeft = Math.round(layout.x * displayWindow.innerWidth);
+    const desiredTop = Math.round(layout.y * displayWindow.innerHeight);
+    panel.style.left = desiredLeft + 'px';
+    panel.style.top = desiredTop + 'px';
+    panel.style.right = 'auto';
+    const maximumWidth = displayWindow.innerWidth * 0.9;
+    const desiredWidth = Math.min(layout.width, maximumWidth);
+    panel.style.width = desiredWidth + 'px';
+    panel.style.width = Math.min(maximumWidth, Math.max(desiredWidth, panel.scrollWidth)) + 'px';
+    panel.style.transform = `rotate(${layout.rotation}deg)`;
+    const bounds = panel.getBoundingClientRect();
+    const correctionX = bounds.left < 0 ? -bounds.left : bounds.right > displayWindow.innerWidth ? displayWindow.innerWidth - bounds.right : 0;
+    const correctionY = bounds.top < 0 ? -bounds.top : bounds.bottom > displayWindow.innerHeight ? displayWindow.innerHeight - bounds.bottom : 0;
+    panel.style.left = desiredLeft + correctionX + 'px';
+    panel.style.top = desiredTop + correctionY + 'px';
+    syncTruncationTooltips(panel);
+  }
 
   // ---------- Pushing dice/initiative state to the display window (HTML overlays, not canvas) ----------
   function updateDisplayExtras() {
@@ -1554,16 +2331,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const panel = displayWindow.document.getElementById('initiativePanel');
       if (panel) {
         if (initiative.showOnDisplay && initiative.combatants.length > 0) {
-          const sorted = sortedCombatants();
-          const currentId = effectiveCurrentId();
-          let html = '<div class="init-round">Round ' + initiative.round + '</div>';
-          sorted.forEach((c) => {
-            const isCurrent = c.id === currentId;
-            html += '<div class="init-row' + (isCurrent ? ' init-current' : '') + '">' +
-              '<span>' + (isCurrent ? '▶ ' : '') + escapeHtml(c.name) + '</span><span>' + c.score + '</span></div>';
-          });
-          panel.innerHTML = html;
+          panel.innerHTML = initiativePanelHtml();
           panel.style.display = 'block';
+          applyInitiativePanelLayout(displayWindow, panel);
         } else {
           panel.style.display = 'none';
         }
@@ -1669,12 +2439,15 @@ import { escapeHtml } from './ui/escape-html.mjs';
     targetCtx.globalAlpha = 1;
     targetCtx.drawImage(s.mapCanvas, cam.x, cam.y, cam.w, cam.h, dx, dy, dw, dh);
     targetCtx.drawImage(s.fogCanvas, cam.x, cam.y, cam.w, cam.h, dx, dy, dw, dh);
+    if (s.drawingVisible && s.drawingCanvas) {
+      targetCtx.drawImage(s.drawingCanvas, cam.x, cam.y, cam.w, cam.h, dx, dy, dw, dh);
+    }
     drawDisplayGrid(targetCtx, s, cam, dx, dy, dw, dh, scale, gridColor);
     drawDisplayAoe(targetCtx, s, cam, dx, dy, scale, pxPerFoot(s));
     const calibTransform = (px, py) => [dx + (px - cam.x) * scale, dy + (py - cam.y) * scale];
     drawCalibLineOnCtx(targetCtx, calibTransform, scale);
     drawCalibSquareOnCtx(targetCtx, s, calibTransform, scale);
-    drawDisplayMarkers(targetCtx, s.markers, cam, dx, dy, dw, dh, scale);
+    drawDisplayMarkers(targetCtx, s.markers, cam, dx, dy, dw, dh, scale, annotationTextSize, annotationTextRotation);
     targetCtx.restore();
   }
 
@@ -1713,20 +2486,20 @@ import { escapeHtml } from './ui/escape-html.mjs';
   }
 
   function syncCameraControls(s) {
-    const zoomPercent = Math.round(s.mapCanvas.width / s.camera.w * 100);
+    const zoomPercent = Math.round(s.cameraZoom);
     cameraZoomEl.value = Math.max(100, Math.min(2000, zoomPercent));
     cameraZoomLabel.textContent = zoomPercent + '%';
   }
 
   // Runs on every redraw (i.e. after every state-changing action in the app) rather than being
   // hooked into each individual place the camera can change — zoom buttons, wheel/pinch, corner
-  // drag, fit-whole-map, and even undoing a camera action all already funnel through redraw(),
+  // drag, fit-aspect, and even undoing a camera action all already funnel through redraw(),
   // so this stays correct without needing to be threaded through every one of them individually.
-  function reapplyZoomLockCalibration(s) {
-    if (!s || s.grid.enabled || !s.aoeZoomLock || !s.aoeZoomLockRefCamW) return;
+  function reapplyZoomCalibration(s) {
+    if (!s || s.grid.enabled || s.aoeZoomLock || !s.aoeCalibrationRefZoom) return;
     if (calibratingLine || calibShowingSquare) return; // suppressed while a fresh calibration is in progress
-    const newCal = s.aoeZoomLockRefCalibration * (s.camera.w / s.aoeZoomLockRefCamW);
-    s.aoeCalibration = Math.max(10, Math.min(2000, newCal));
+    const newCal = s.aoeCalibrationRefValue * (s.aoeCalibrationRefZoom / s.cameraZoom);
+    s.aoeCalibration = Math.max(0.1, Math.min(2000, newCal));
     if (appMode === 'aoe' && aoeCalibrationEl) {
       aoeCalibrationEl.value = Math.round(s.aoeCalibration);
     }
@@ -1734,8 +2507,17 @@ import { escapeHtml } from './ui/escape-html.mjs';
 
   function redraw() {
     const s = cs();
-    if (!s) return;
-    reapplyZoomLockCalibration(s);
+    if (!s) {
+      calibSnapZoomBtn.style.display = 'none';
+      nextTurnBtn.style.display = 'none';
+      initiativeLayoutOverlay.style.display = 'none';
+      return;
+    }
+    nextTurnBtn.textContent = 'Next turn · Round ' + initiative.round;
+    nextTurnBtn.style.display = initiative.combatants.length > 0 ? 'block' : 'none';
+    reapplyZoomCalibration(s);
+    const zoomDiffers = s.aoeZoomLockRefZoom && Math.abs(s.cameraZoom - s.aoeZoomLockRefZoom) > 0.5;
+    calibSnapZoomBtn.style.display = s.aoeZoomLock && zoomDiffers ? 'block' : 'none';
     syncCameraControls(s);
     const scaleX = workCanvas.width / s.mapCanvas.width;
     const scaleY = workCanvas.height / s.mapCanvas.height;
@@ -1745,17 +2527,19 @@ import { escapeHtml } from './ui/escape-html.mjs';
     ctx.globalAlpha = fogViewOpacity;
     ctx.drawImage(s.fogCanvas, 0, 0, workCanvas.width, workCanvas.height);
     ctx.restore();
+    if (s.drawingCanvas) ctx.drawImage(s.drawingCanvas, 0, 0, workCanvas.width, workCanvas.height);
     ctx.save();
     ctx.scale(scaleX, scaleY);
-    drawDungeon(ctx, s.dungeonSegments, dungeonActiveSegmentId, s.mapCanvas.width, s.mapCanvas.height);
+    drawDungeon(ctx, s.dungeonSegments, dungeonActiveSegmentId, s.mapCanvas.width, s.mapCanvas.height, annotationTextSize / scaleX);
     drawControlGrid(ctx, s, gridColor);
     drawControlAoe(ctx, s, selectedAoeId, pxPerFoot(s));
     const identityTransform = (px, py) => [px, py];
     drawCalibLineOnCtx(ctx, identityTransform, 1);
     drawCalibSquareOnCtx(ctx, s, identityTransform, 1);
-    drawCanvasMarkers(ctx, s.markers, selectedMarkerId);
+    drawCanvasMarkers(ctx, s.markers, selectedMarkerId, annotationTextSize / scaleX);
     if (appMode === 'camera') drawCameraOverlay(s);
     ctx.restore();
+    renderInitiativeLayoutOverlay();
 
     const displayWindow = displayWindowManager?.getWindow();
     if (displayWindow && !displayWindow.closed) {
@@ -1795,12 +2579,116 @@ import { escapeHtml } from './ui/escape-html.mjs';
     return null;
   }
 
+  function setUniversalSelectActive(active) {
+    universalSelectActive = active;
+    universalSelectBtn.classList.toggle('active', active);
+    universalSelectBtn.setAttribute('aria-pressed', String(active));
+    if (active) workCanvas.style.cursor = 'pointer';
+    renderInitiativeLayoutOverlay();
+  }
+
+  function applyHandPosition() {
+    const margin = 14;
+    const maxLeft = Math.max(margin, canvasArea.clientWidth - universalSelectBtn.offsetWidth - margin);
+    const maxTop = Math.max(margin, canvasArea.clientHeight - universalSelectBtn.offsetHeight - margin);
+    universalSelectBtn.style.left = margin + handPosition.x * (maxLeft - margin) + 'px';
+    universalSelectBtn.style.top = margin + handPosition.y * (maxTop - margin) + 'px';
+    universalSelectBtn.style.right = 'auto';
+    universalSelectBtn.style.bottom = 'auto';
+  }
+
+  function universalHit(s, x, y) {
+    const marker = findMarkerNear(s, x, y);
+    if (marker) return { type: 'marker', value: marker };
+    const aoe = hitTestAoe(s, x, y);
+    if (aoe) return { type: 'aoe', value: aoe };
+    const dungeon = hitTestDungeon(s.dungeonSegments, x, y);
+    if (dungeon) return { type: 'dungeon', value: dungeon };
+    const scale = s.mapCanvas.width / workCanvas.getBoundingClientRect().width;
+    const camera = hitTestCamera(s.camera, x, y, scale, HANDLE_SIZE);
+    if (camera) return { type: 'camera', value: camera };
+    return null;
+  }
+
+  function selectUniversalHit(s, hit, event) {
+    if (!hit) return;
+    setUniversalSelectActive(false);
+    if (hit.type === 'marker') {
+      setAppMode('markers');
+      selectedMarkerId = hit.value.id;
+      syncMarkerInspector(hit.value);
+    } else if (hit.type === 'aoe') {
+      setAppMode('aoe');
+      selectedAoeId = hit.value.id;
+      syncAoeInspector(hit.value);
+    } else if (hit.type === 'dungeon') {
+      setAppMode('dungeon');
+      dungeonTool = 'select';
+      dungeonPaintToolBtn.classList.remove('active');
+      dungeonSelectToolBtn.classList.add('active');
+      dungeonActiveSegmentId = hit.value.id;
+      syncDungeonInspector(hit.value);
+      showDungeonTooltip(hit.value, event.clientX, event.clientY);
+      renderDungeonSegments();
+    } else if (hit.type === 'camera') {
+      setAppMode('camera');
+    }
+    redraw();
+  }
+
+  universalSelectBtn.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const areaRect = canvasArea.getBoundingClientRect();
+    const buttonRect = universalSelectBtn.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = buttonRect.left - areaRect.left;
+    const startTop = buttonRect.top - areaRect.top;
+    let moved = false;
+    universalSelectBtn.classList.add('dragging');
+    const move = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      if (!moved && Math.hypot(deltaX, deltaY) < 4) return;
+      moved = true;
+      const margin = 14;
+      const maxLeft = Math.max(margin, areaRect.width - buttonRect.width - margin);
+      const maxTop = Math.max(margin, areaRect.height - buttonRect.height - margin);
+      const left = Math.max(margin, Math.min(maxLeft, startLeft + deltaX));
+      const top = Math.max(margin, Math.min(maxTop, startTop + deltaY));
+      handPosition.x = maxLeft === margin ? 0 : (left - margin) / (maxLeft - margin);
+      handPosition.y = maxTop === margin ? 0 : (top - margin) / (maxTop - margin);
+      applyHandPosition();
+    };
+    const finish = (finishEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      universalSelectBtn.classList.remove('dragging');
+      if (finishEvent.type === 'pointerup' && !moved) setUniversalSelectActive(!universalSelectActive);
+      if (moved) scheduleAutosave();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  });
+  universalSelectBtn.addEventListener('click', (event) => {
+    if (event.detail === 0) setUniversalSelectActive(!universalSelectActive);
+  });
+
   // ---------- Canvas interaction ----------
   workCanvas.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const s = cs();
     if (!s) return;
     const p = canvasCoords(e);
+
+    if (universalSelectActive) {
+      selectUniversalHit(s, universalHit(s, p.x, p.y), e);
+      return;
+    }
 
     if (appMode === 'brush') {
       drawing = true;
@@ -1814,6 +2702,22 @@ import { escapeHtml } from './ui/escape-html.mjs';
       };
       applyFogAction(s.fogCtx, activeFogAction, s.fogCanvas.width, s.fogCanvas.height);
       s.fogDirty = true;
+      redraw();
+      return;
+    }
+
+    if (appMode === 'draw') {
+      drawingOnMap = true;
+      activeDrawingAction = {
+        type: 'stroke',
+        points: [{ x: p.x, y: p.y }],
+        brushSize: parseInt(drawSizeEl.value, 10),
+        color: drawColor,
+        erasing: drawTool === 'eraser',
+      };
+      const drawingContext = ensureDrawingLayer(s);
+      applyDrawingAction(drawingContext, activeDrawingAction, s.mapCanvas.width, s.mapCanvas.height);
+      s.drawingDirty = true;
       redraw();
       return;
     }
@@ -1994,12 +2898,33 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const s = cs();
     if (!s) return;
 
+    if (universalSelectActive) {
+      const rect = workCanvas.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+        workCanvas.style.cursor = 'crosshair';
+      } else {
+        const point = canvasCoords(e);
+        workCanvas.style.cursor = universalHit(s, point.x, point.y) ? 'pointer' : 'crosshair';
+      }
+      return;
+    }
+
     if (appMode === 'brush' && drawing) {
       const p = canvasCoords(e);
       paintFogStroke(s.fogCtx, lastX, lastY, p.x, p.y, activeFogAction.brushSize, activeFogAction.revealing, activeFogAction.softEdge);
       activeFogAction.points.push({ x: p.x, y: p.y });
       s.fogDirty = true;
       lastX = p.x; lastY = p.y;
+      scheduleRedrawFrame();
+      return;
+    }
+
+    if (appMode === 'draw' && drawingOnMap) {
+      const p = canvasCoords(e);
+      const previous = activeDrawingAction.points[activeDrawingAction.points.length - 1];
+      paintDrawingStroke(s.drawingCtx, previous.x, previous.y, p.x, p.y, activeDrawingAction.brushSize, activeDrawingAction.color, activeDrawingAction.erasing);
+      activeDrawingAction.points.push({ x: p.x, y: p.y });
+      s.drawingDirty = true;
       scheduleRedrawFrame();
       return;
     }
@@ -2037,6 +2962,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     if (appMode === 'camera' && cameraDrag) {
       const p = canvasCoords(e);
       applyCameraDrag(s.camera, s.mapCanvas.width, s.mapCanvas.height, cameraDrag, p.x - lastX, p.y - lastY);
+      if (cameraDrag !== 'move') updateCameraZoomFromFrame(s);
       lastX = p.x; lastY = p.y;
       workCanvas.style.cursor = cameraCursorFor(cameraDrag);
       scheduleRedrawFrame();
@@ -2064,6 +2990,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
       const lengthMapPx = Math.hypot(calibLineCurrent.x - calibLineStart.x, calibLineCurrent.y - calibLineStart.y);
       if (lengthMapPx > 2) {
         s.aoeCalibration = Math.max(10, Math.min(2000, (lengthMapPx / calibRefFt) * 5));
+        s.aoeCalibrationRefValue = s.aoeCalibration;
+        s.aoeCalibrationRefZoom = s.cameraZoom;
         aoeCalibrationEl.value = Math.round(s.aoeCalibration);
       }
       scheduleRedrawFrame();
@@ -2112,7 +3040,18 @@ import { escapeHtml } from './ui/escape-html.mjs';
     }
   }
 
-  workCanvas.addEventListener('pointerleave', finishDungeonPainting);
+  function finishMapDrawing() {
+    if (!drawingOnMap) return;
+    drawingOnMap = false;
+    const s = cs();
+    if (s && activeDrawingAction) pushDrawingAction(s, activeDrawingAction);
+    activeDrawingAction = null;
+  }
+
+  workCanvas.addEventListener('pointerleave', () => {
+    finishDungeonPainting();
+    finishMapDrawing();
+  });
 
   function finishPointerInteraction() {
     const s = cs();
@@ -2121,6 +3060,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       pushFogAction(s, activeFogAction);
       activeFogAction = null;
     }
+    finishMapDrawing();
     finishDungeonPainting();
     if (draggingMarker && s) { draggingMarker = null; pushMarkersUndo(s); scheduleAutosave(); workCanvas.style.cursor = 'grab'; }
     else if (draggingMarker) { draggingMarker = null; }
@@ -2139,6 +3079,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
       calibDrawLineBtn.classList.remove('primary');
       if (s) {
         if (s.aoeZoomLock) reanchorZoomLockReference(s);
+        else reanchorDynamicCalibration(s);
         pushAoeUndo(s);
       }
       redraw();
@@ -2150,31 +3091,65 @@ import { escapeHtml } from './ui/escape-html.mjs';
   let cameraWheelUndoTimer = null;
   workCanvas.addEventListener('wheel', (e) => {
     const s = cs();
-    if (appMode !== 'camera' || !s) return;
+    if (!s) return;
+    if (e.ctrlKey) e.preventDefault();
+    if (appMode !== 'camera') return;
     e.preventDefault();
     const p = canvasCoords(e);
-    zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, p.x, p.y, Math.exp(e.deltaY * 0.01));
+    const factor = Math.exp(e.deltaY * 0.01);
+    zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, p.x, p.y, factor);
+    updateCameraZoomFromFrame(s);
     redraw();
     // Debounced so a smooth pinch/scroll gesture becomes one undo step, not dozens.
     clearTimeout(cameraWheelUndoTimer);
     cameraWheelUndoTimer = setTimeout(() => pushCameraUndo(s), 500);
   }, { passive: false });
+  canvasArea.addEventListener('wheel', (event) => {
+    if (event.ctrlKey) event.preventDefault();
+  }, { passive: false });
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((eventName) => {
+    canvasArea.addEventListener(eventName, event => event.preventDefault(), { passive: false });
+  });
+
+  window.addEventListener('resize', () => {
+    renderInitiativeLayoutOverlay();
+    applyInitiativeWindowGeometry();
+    applyHandPosition();
+    syncTruncationTooltips(document);
+  });
 
   zoomInBtn.addEventListener('click', () => {
     const s = cs(); if (!s) return;
     zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, s.camera.x + s.camera.w / 2, s.camera.y + s.camera.h / 2, 0.8);
+    updateCameraZoomFromFrame(s);
     pushCameraUndo(s);
     redraw();
   });
   zoomOutBtn.addEventListener('click', () => {
     const s = cs(); if (!s) return;
     zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, s.camera.x + s.camera.w / 2, s.camera.y + s.camera.h / 2, 1.25);
+    updateCameraZoomFromFrame(s);
     pushCameraUndo(s);
     redraw();
   });
   fitFullBtn.addEventListener('click', () => {
     const s = cs(); if (!s) return;
-    s.camera = { x: 0, y: 0, w: s.mapCanvas.width, h: s.mapCanvas.height };
+    s.camera = fitCameraToAspect(s.mapCanvas.width, s.mapCanvas.height, cameraAspectValue(s));
+    s.cameraZoom = 100;
+    pushCameraUndo(s);
+    redraw();
+  });
+  cameraAspectEl.addEventListener('change', () => {
+    const s = cs(); if (!s) return;
+    s.cameraAspect = cameraAspectEl.value;
+    reframeCameraAspect(s, cameraAspectValue(s));
+    if (s.aoeZoomLock && s.aoeZoomLockRefZoom) {
+      const referenceFit = fitCameraToAspect(s.mapCanvas.width, s.mapCanvas.height, cameraAspectValue(s));
+      const referenceWidth = referenceFit.w * 100 / s.aoeZoomLockRefZoom;
+      const referenceHeight = referenceFit.h * 100 / s.aoeZoomLockRefZoom;
+      s.aoeZoomLockRefCamW = referenceWidth;
+      s.aoeZoomLockRefCamera = { x: 0, y: 0, w: referenceWidth, h: referenceHeight };
+    }
     pushCameraUndo(s);
     redraw();
   });
@@ -2188,9 +3163,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
   cameraZoomEl.addEventListener('input', () => {
     const s = cs(); if (!s) return;
     const zoomPercent = parseInt(cameraZoomEl.value, 10);
-    const targetWidth = s.mapCanvas.width * 100 / zoomPercent;
-    const factor = targetWidth / s.camera.w;
-    zoomCameraAt(s.camera, s.mapCanvas.width, s.mapCanvas.height, s.camera.x + s.camera.w / 2, s.camera.y + s.camera.h / 2, factor);
+    s.cameraZoom = zoomPercent;
+    reframeCameraAspect(s, cameraAspectValue(s));
     cameraZoomLabel.textContent = zoomPercent + '%';
     redraw();
   });
@@ -2201,6 +3175,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   // ---------- Mode switching ----------
   function setAppMode(newMode) {
     appMode = newMode;
+    if (newMode !== 'draw') { drawingOnMap = false; activeDrawingAction = null; }
     if (newMode !== 'markers') { selectedMarkerId = null; draggingMarker = null; syncMarkerInspector(null); }
     if (newMode !== 'aoe') { selectedAoeId = null; draggingAoe = null; rotatingAoe = null; workCanvas.style.cursor = ''; }
     if (newMode !== 'camera') { workCanvas.style.cursor = ''; }
@@ -2210,9 +3185,10 @@ import { escapeHtml } from './ui/escape-html.mjs';
       dungeonNotesPanel.style.display = 'none';
       hideDungeonTooltip();
     }
-    [mapsModeBtn, brushModeBtn, markerModeBtn, cameraModeBtn, gridModeBtn, dungeonModeBtn, calibrateModeBtn, aoeModeBtn, diceModeBtn, initModeBtn].forEach(b => b.classList.remove('active'));
+    [mapsModeBtn, brushModeBtn, drawModeBtn, markerModeBtn, cameraModeBtn, gridModeBtn, dungeonModeBtn, calibrateModeBtn, aoeModeBtn, diceModeBtn].forEach(b => b.classList.remove('active'));
     mapsControls.style.display = 'none';
     fogControls.style.display = 'none';
+    drawControls.style.display = 'none';
     markerControls.style.display = 'none';
     cameraControls.style.display = 'none';
     gridControls.style.display = 'none';
@@ -2220,9 +3196,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
     calibrateControls.style.display = 'none';
     aoeControls.style.display = 'none';
     diceControls.style.display = 'none';
-    initiativeControls.style.display = 'none';
     if (newMode === 'maps') { mapsModeBtn.classList.add('active'); mapsControls.style.display = 'flex'; }
     if (newMode === 'brush') { brushModeBtn.classList.add('active'); fogControls.style.display = 'flex'; }
+    if (newMode === 'draw') { drawModeBtn.classList.add('active'); drawControls.style.display = 'flex'; workCanvas.style.cursor = 'crosshair'; }
     if (newMode === 'markers') { markerModeBtn.classList.add('active'); markerControls.style.display = 'flex'; workCanvas.style.cursor = 'crosshair'; }
     if (newMode === 'camera') { cameraModeBtn.classList.add('active'); cameraControls.style.display = 'flex'; }
     if (newMode === 'grid') { gridModeBtn.classList.add('active'); gridControls.style.display = 'flex'; }
@@ -2235,8 +3211,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     if (newMode === 'calibrate') { calibrateModeBtn.classList.add('active'); calibrateControls.style.display = 'flex'; updateCalibrationUI(); }
     if (newMode === 'aoe') { aoeModeBtn.classList.add('active'); aoeControls.style.display = 'flex'; workCanvas.style.cursor = 'crosshair'; updateCalibrationUI(); }
     if (newMode === 'dice') { diceModeBtn.classList.add('active'); diceControls.style.display = 'flex'; }
-    if (newMode === 'init') { initModeBtn.classList.add('active'); initiativeControls.style.display = 'flex'; renderInitiative(); }
-    const labels = { brush: 'Undo (Fog)', markers: 'Undo (Markers)', camera: 'Undo (Camera)', grid: 'Undo (Grid)', dungeon: 'Undo (Dungeon)', aoe: 'Undo (AoE)', calibrate: 'Undo (AoE)' };
+    const labels = { brush: 'Undo (Fog)', draw: 'Undo (Draw)', markers: 'Undo (Markers)', camera: 'Undo (Camera)', grid: 'Undo (Grid)', dungeon: 'Undo (Dungeon)', aoe: 'Undo (AoE)', calibrate: 'Undo (AoE)' };
     const undoApplies = newMode in labels;
     undoContextLabel.textContent = undoApplies ? labels[newMode] : 'Undo';
     undoBtn.disabled = !undoApplies;
@@ -2263,6 +3238,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
   catToolsBtn.addEventListener('click', () => setAppMode(lastActiveInCategory.tools));
   mapsModeBtn.addEventListener('click', () => setAppMode('maps'));
   brushModeBtn.addEventListener('click', () => setAppMode('brush'));
+  drawModeBtn.addEventListener('click', () => setAppMode('draw'));
   markerModeBtn.addEventListener('click', () => setAppMode('markers'));
   cameraModeBtn.addEventListener('click', () => setAppMode('camera'));
   gridModeBtn.addEventListener('click', () => setAppMode('grid'));
@@ -2270,7 +3246,6 @@ import { escapeHtml } from './ui/escape-html.mjs';
   calibrateModeBtn.addEventListener('click', () => setAppMode('calibrate'));
   aoeModeBtn.addEventListener('click', () => setAppMode('aoe'));
   diceModeBtn.addEventListener('click', () => setAppMode('dice'));
-  initModeBtn.addEventListener('click', () => setAppMode('init'));
 
 
   // ---------- Undo (per-slide, per-mode — each tab remembers its own history independently) ----------
@@ -2282,6 +3257,24 @@ import { escapeHtml } from './ui/escape-html.mjs';
     }
     s.fogDirty = true;
     scheduleAutosave();
+  }
+
+  function pushDrawingAction(s, action) {
+    if (!action) return;
+    s.drawingActions.push(action);
+    if (s.drawingActions.length > UNDO_LIMIT) s.drawingCommittedActions.push(s.drawingActions.shift());
+    s.drawingDirty = true;
+    scheduleAutosave();
+  }
+
+  function replayDrawing(s) {
+    const drawingContext = ensureDrawingLayer(s);
+    drawingContext.clearRect(0, 0, s.mapCanvas.width, s.mapCanvas.height);
+    if (s.drawingBaseImage) drawingContext.drawImage(s.drawingBaseImage, 0, 0);
+    [...s.drawingCommittedActions, ...s.drawingActions].forEach((action) => {
+      applyDrawingAction(drawingContext, action, s.mapCanvas.width, s.mapCanvas.height);
+    });
+    s.drawingDirty = true;
   }
 
   function replayFog(s) {
@@ -2297,7 +3290,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     pushBounded(s.markersUndoStack, cloneValue(s.markers), UNDO_LIMIT);
   }
   function pushCameraUndo(s) {
-    pushBounded(s.cameraUndoStack, snapshotCamera(s.camera), UNDO_LIMIT);
+    pushBounded(s.cameraUndoStack, snapshotCamera(s.camera, s.cameraAspect, s.cameraZoom), UNDO_LIMIT);
   }
   function pushGridUndo(s) {
     pushBounded(s.gridUndoStack, snapshotGrid(s.grid), UNDO_LIMIT);
@@ -2310,6 +3303,12 @@ import { escapeHtml } from './ui/escape-html.mjs';
     if (s.fogActions.length === 0) return;
     s.fogActions.pop();
     replayFog(s);
+    redraw();
+  }
+  function undoDrawing(s) {
+    if (s.drawingActions.length === 0) return;
+    s.drawingActions.pop();
+    replayDrawing(s);
     redraw();
   }
   function undoMarkers(s) {
@@ -2327,6 +3326,9 @@ import { escapeHtml } from './ui/escape-html.mjs';
     s.cameraUndoStack.pop();
     const prev = s.cameraUndoStack[s.cameraUndoStack.length - 1];
     s.camera = { x: prev.x, y: prev.y, w: prev.w, h: prev.h };
+    if (prev.aspect !== undefined) s.cameraAspect = prev.aspect;
+    if (prev.zoom !== undefined) s.cameraZoom = prev.zoom;
+    cameraAspectEl.value = s.cameraAspect;
     redraw();
   }
   function undoGrid(s) {
@@ -2352,9 +3354,12 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const prev = s.aoeUndoStack[s.aoeUndoStack.length - 1];
     s.aoeShapes = cloneValue(prev.shapes);
     s.aoeCalibration = prev.calibration;
+    s.aoeCalibrationRefValue = prev.calibrationRefValue ?? prev.calibration;
+    s.aoeCalibrationRefZoom = prev.calibrationRefZoom ?? s.cameraZoom;
     s.aoeZoomLock = !!prev.zoomLock;
     s.aoeZoomLockRefCalibration = prev.zoomLockRefCalibration;
     s.aoeZoomLockRefCamW = prev.zoomLockRefCamW;
+    s.aoeZoomLockRefZoom = prev.zoomLockRefZoom;
     s.aoeZoomLockRefCamera = prev.zoomLockRefCamera ? { ...prev.zoomLockRefCamera } : null;
     selectedAoeId = null;
     draggingAoe = null;
@@ -2380,6 +3385,7 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const s = cs();
     if (!s) return;
     if (appMode === 'brush') undoFog(s);
+    else if (appMode === 'draw') undoDrawing(s);
     else if (appMode === 'markers') undoMarkers(s);
     else if (appMode === 'camera') undoCamera(s);
     else if (appMode === 'grid') undoGrid(s);
@@ -2548,17 +3554,25 @@ import { escapeHtml } from './ui/escape-html.mjs';
     const val = parseFloat(aoeCalibrationEl.value);
     if (!isFinite(val) || val <= 0) return;
     s.aoeCalibration = val;
+    if (!s.aoeZoomLock) reanchorDynamicCalibration(s);
     redraw();
   });
   aoeCalibrationEl.addEventListener('change', () => {
     const s = cs(); if (!s) return;
     if (s.aoeZoomLock) reanchorZoomLockReference(s);
+    else reanchorDynamicCalibration(s);
     pushAoeUndo(s);
   });
+
+  function reanchorDynamicCalibration(s) {
+    s.aoeCalibrationRefValue = s.aoeCalibration;
+    s.aoeCalibrationRefZoom = s.cameraZoom;
+  }
 
   function reanchorZoomLockReference(s) {
     s.aoeZoomLockRefCalibration = s.aoeCalibration;
     s.aoeZoomLockRefCamW = s.camera.w;
+    s.aoeZoomLockRefZoom = s.cameraZoom;
     s.aoeZoomLockRefCamera = { ...s.camera };
   }
 
@@ -2615,8 +3629,8 @@ import { escapeHtml } from './ui/escape-html.mjs';
     s.aoeZoomLock = aoeZoomLockToggle.checked;
     if (s.aoeZoomLock) {
       reanchorZoomLockReference(s);
-      calibSnapZoomBtn.style.display = 'block';
     } else {
+      reanchorDynamicCalibration(s);
       calibSnapZoomBtn.style.display = 'none';
     }
     pushAoeUndo(s);
@@ -2627,7 +3641,17 @@ import { escapeHtml } from './ui/escape-html.mjs';
   calibSnapZoomBtn.addEventListener('click', () => {
     const s = cs();
     if (!s || !s.aoeZoomLockRefCamera) return;
-    s.camera = { ...s.aoeZoomLockRefCamera };
+    const centerX = s.camera.x + s.camera.w / 2;
+    const centerY = s.camera.y + s.camera.h / 2;
+    const targetWidth = Math.min(s.aoeZoomLockRefCamera.w, s.mapCanvas.width);
+    const targetHeight = Math.min(s.aoeZoomLockRefCamera.h, s.mapCanvas.height);
+    s.cameraZoom = s.aoeZoomLockRefZoom || 100;
+    s.camera = {
+      x: clamp(centerX - targetWidth / 2, 0, s.mapCanvas.width - targetWidth),
+      y: clamp(centerY - targetHeight / 2, 0, s.mapCanvas.height - targetHeight),
+      w: targetWidth,
+      h: targetHeight,
+    };
     pushCameraUndo(s);
     redraw();
   });
@@ -2758,6 +3782,34 @@ import { escapeHtml } from './ui/escape-html.mjs';
   });
   fogOpacityLabel.textContent = fogOpacity.value + '%';
   fogViewOpacity = parseInt(fogOpacity.value, 10) / 100;
+
+  // ---------- Freeform drawing controls ----------
+  drawPenBtn.addEventListener('click', () => {
+    drawTool = 'pen';
+    drawPenBtn.classList.add('active');
+    drawEraserBtn.classList.remove('active');
+  });
+  drawEraserBtn.addEventListener('click', () => {
+    drawTool = 'eraser';
+    drawEraserBtn.classList.add('active');
+    drawPenBtn.classList.remove('active');
+  });
+  drawSizeEl.addEventListener('input', () => {
+    drawSizeLabel.textContent = drawSizeEl.value + 'px';
+  });
+  drawVisibleToggle.addEventListener('change', () => {
+    const s = cs();
+    if (!s) { drawVisibleToggle.checked = false; return; }
+    s.drawingVisible = drawVisibleToggle.checked;
+    redraw();
+  });
+  clearDrawingBtn.addEventListener('click', () => {
+    const s = cs(); if (!s) return;
+    const action = { type: 'clear' };
+    applyDrawingAction(ensureDrawingLayer(s), action, s.mapCanvas.width, s.mapCanvas.height);
+    pushDrawingAction(s, action);
+    redraw();
+  });
 
   // ---------- Display window ----------
   displayWindowManager = createDisplayWindowManager({

@@ -10,6 +10,7 @@
     <div class="sidebar-header">
       <div class="header-display-row">
         <button class="primary" id="openDisplayBtn">Open display window</button>
+        <button id="openInitiativeBtn" type="button" aria-expanded="false" aria-controls="initiativeFloatingWindow">Initiative</button>
         <div class="status" id="displayStatus" role="status" aria-live="polite">Not connected.</div>
       </div>
       <div class="tabs" role="tablist" aria-label="Tool categories">
@@ -20,6 +21,7 @@
       </div>
       <div class="tabs" id="subTabsMap" role="tablist" aria-label="Map tools" style="display:none;">
         <button id="brushModeBtn" role="tab" aria-selected="false" aria-controls="fogControls">Fog</button>
+        <button id="drawModeBtn" role="tab" aria-selected="false" aria-controls="drawControls">Draw</button>
         <button id="markerModeBtn" role="tab" aria-selected="false" aria-controls="markerControls">Markers</button>
         <button id="gridModeBtn" role="tab" aria-selected="false" aria-controls="gridControls">Grid</button>
         <button id="dungeonModeBtn" role="tab" aria-selected="false" aria-controls="dungeonControls">Dungeon</button>
@@ -31,7 +33,6 @@
       <div class="tabs" id="subTabsTools" role="tablist" aria-label="Gameplay tools" style="display:none;">
         <button id="aoeModeBtn" role="tab" aria-selected="false" aria-controls="aoeControls">AoE</button>
         <button id="diceModeBtn" role="tab" aria-selected="false" aria-controls="diceControls">Dice</button>
-        <button id="initModeBtn" role="tab" aria-selected="false" aria-controls="initiativeControls">Init</button>
       </div>
     </div>
 
@@ -46,6 +47,11 @@
         <button id="prevSlideBtn">◀ Prev</button>
         <button id="nextSlideBtn">Next ▶</button>
       </div>
+      <label for="annotationTextSize">Annotation Text Size</label>
+      <input type="range" id="annotationTextSize" min="8" max="40" value="13" aria-describedby="annotationTextSizeLabel">
+      <div class="value-row"><span>Compact</span><span id="annotationTextSizeLabel">13px</span><span>Large</span></div>
+      <button id="annotationTextRotateBtn">Rotate display text 90° (0°)</button>
+      <div class="status">Sets the rendered size of marker and dungeon labels on both small and very large maps.</div>
       <div class="status">Drag images onto the map area to add them. Drag list items to reorder, or use the edit button to rename them. Map state persists when you switch. Use "Save session…" at the bottom of the sidebar so a crash never costs you your whole slideshow.</div>
       <div class="status"><strong>How this works</strong><br>1. Add one or more map images — each keeps its own fog.<br>2. Click "Open display window" above, drag it onto the TV, press F11 for fullscreen.<br>3. Switch maps anytime; fog stays as you left it on each one. New maps start fully revealed.</div>
     </div>
@@ -70,6 +76,30 @@
       <div class="status">This only changes how fog looks on <strong>your</strong> screen so you can see the map underneath. The display screen always shows fog fully solid.</div>
       <button id="resetFogBtn" style="margin-top:6px;">Cover entire map</button>
       <button id="clearFogBtn">Reveal entire map</button>
+    </div>
+
+    <div class="group" id="drawControls" style="display:none;">
+      <label>Freeform Drawing</label>
+      <div class="mode-row">
+        <button id="drawPenBtn" class="active">Draw</button>
+        <button id="drawEraserBtn">Erase</button>
+      </div>
+      <label for="drawSize" style="margin-top:6px;">Brush Size</label>
+      <input type="range" id="drawSize" min="2" max="120" value="12" aria-describedby="drawSizeLabel">
+      <div class="value-row"><span>Fine</span><span id="drawSizeLabel">12px</span><span>Broad</span></div>
+      <label style="margin-top:6px;">Drawing Color</label>
+      <div class="mode-row" id="drawColorSwatches"></div>
+      <div class="mode-row" id="drawColorSwatchesRecent" style="margin-top:6px;"></div>
+      <div class="value-row" style="align-items:center; margin-top:6px;">
+        <span>Custom color</span>
+        <input type="color" id="drawColorWheel" value="#ff5b5b" aria-label="Custom drawing color" style="width:32px; height:32px; padding:0; border:1px solid var(--panel-border); border-radius:6px; background:none;">
+      </div>
+      <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:6px;">
+        <input type="checkbox" id="drawVisibleToggle">
+        Show drawings on display screen
+      </label>
+      <button class="danger" id="clearDrawingBtn">Clear all drawings</button>
+      <div class="status">Draw directly over the map or switch to Erase. Drawings are saved per map and stay private until you enable them for the display.</div>
     </div>
 
     <div class="group" id="markerControls" style="display:none;">
@@ -100,12 +130,22 @@
     <div class="group" id="cameraControls" style="display:none;">
       <label>Display Camera</label>
       <div class="status">The bright rectangle is exactly what the display sees. Drag inside it to pan, drag a corner to resize, click outside to recenter, or scroll/pinch to zoom.</div>
+      <label for="cameraAspect">Aspect Ratio</label>
+      <select id="cameraAspect">
+        <option value="16:9">16:9 — TV / widescreen</option>
+        <option value="16:10">16:10 — laptop</option>
+        <option value="4:3">4:3 — classic display</option>
+        <option value="3:2">3:2 — photo / tablet</option>
+        <option value="21:9">21:9 — ultrawide</option>
+        <option value="source">Source image</option>
+        <option value="custom">Current framing</option>
+      </select>
       <label for="cameraZoom">Display Zoom</label>
       <input type="range" id="cameraZoom" min="100" max="2000" step="25" value="100" aria-describedby="cameraZoomLabel">
       <div class="value-row"><span>Whole map</span><span id="cameraZoomLabel">100%</span><span>Close</span></div>
-      <div class="mode-row">
+      <div class="mode-row camera-actions">
         <button id="zoomOutBtn">Zoom out</button>
-        <button id="fitFullBtn">Fit map</button>
+        <button id="fitFullBtn">Fit aspect</button>
         <button id="zoomInBtn">Zoom in</button>
       </div>
       <button id="centerCameraBtn">Center display view</button>
@@ -203,7 +243,7 @@
       <div id="aoeCalibrationGridNote" class="status" style="display:none;">Using this map's grid: 1 square = 5ft.</div>
       <div id="aoeCalibrationManualRow">
         <label for="aoeCalibration" style="margin-top:2px;">Pixels per 5ft square</label>
-        <input type="number" id="aoeCalibration" min="10" max="2000" step="5" value="100">
+        <input type="number" id="aoeCalibration" min="0.1" max="2000" step="0.1" value="100">
         <div class="status">On a grid, 5ft always equals one grid square automatically. Without a grid, calibrate here so AoE sizes are accurate for this specific map.</div>
 
         <div class="divider"></div>
@@ -224,8 +264,7 @@
           <input type="checkbox" id="aoeZoomLockToggle">
           Lock to zoom
         </label>
-        <div class="status">When locked, calibration auto-adjusts every time you zoom, so a real-world foot stays the same physical size on the TV no matter how far in or out you go.</div>
-        <button id="calibSnapZoomBtn" style="display:none; margin-top:6px;">Snap to calibrated zoom</button>
+        <div class="status">Unlocked keeps AoEs the same apparent size on the TV by compensating calibration as camera zoom changes. Lock freezes their size on the control map, so they naturally grow on the TV when zooming in and shrink when zooming out.</div>
       </div>
     </div>
 
@@ -256,31 +295,41 @@
       <div id="diceResult" class="status" role="status" aria-live="polite" style="font-size:16px; color:var(--text); min-height:20px;"></div>
       <div class="divider"></div>
       <label>History</label>
-      <div id="diceHistoryList" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+      <div id="diceHistoryList" class="scroll-region" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
       <div class="status">The pool is for quick one-off rolls (click a die, it rolls once and adds to the running total — click × on a die to remove a misclick). The formula roll below is for a specific NdX+mod, and goes to history. Either can be revealed to the display; showing one replaces whatever was shown before.</div>
     </div>
 
     <div class="group" id="initiativeControls" style="display:none;">
       <div class="value-row" style="align-items:center;">
         <label style="margin:0;">Round <span id="roundLabel">1</span></label>
-        <button class="primary" id="nextTurnBtn">Next Turn ▶</button>
+        <span class="status">Drag cards to set ties or override score order.</span>
       </div>
       <label class="checkbox-row" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); margin-top:4px;">
         <input type="checkbox" id="initiativeShowOnDisplay">
         Show on display screen
       </label>
+      <div class="status">Use the map preview to position the display tracker. Drag it, resize from its corner, or use its rotate handle. Layout persists with the session.</div>
+
+      <div class="divider"></div>
+      <label>Custom Columns</label>
+      <div id="initiativeColumnList" class="initiative-column-list"></div>
+      <div class="initiative-column-add">
+        <input type="text" id="initiativeColumnName" maxlength="40" aria-label="New initiative column name" placeholder="Column name">
+        <button id="addInitiativeColumnBtn" type="button">Add</button>
+      </div>
 
       <div id="combatantList" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
 
       <div class="divider"></div>
 
-      <label>Add Combatant</label>
-      <input type="text" id="combatantName" aria-label="Combatant name" placeholder="Name">
-      <input type="number" id="combatantScore" aria-label="Combatant initiative" placeholder="Initiative" style="margin-top:6px;">
-      <button id="addCombatantBtn" style="margin-top:6px;">Add to initiative</button>
+      <div class="combatant-add-row">
+        <input type="text" id="combatantName" aria-label="Combatant name" placeholder="Name">
+        <input type="number" id="combatantScore" aria-label="Combatant initiative" placeholder="Init">
+        <button id="addCombatantBtn" type="button">Add</button>
+      </div>
       <button class="danger" id="resetInitiativeBtn" style="margin-top:6px;">Clear all / new encounter</button>
 
-      <div class="status">Turn order is shared across all maps, not tied to any one of them. Sorted highest first; the current turn is marked ▶. AC/HP are optional (leave blank for players) and GM-only — never shown on the display. Type +N/-N into the HP box for damage/healing or a plain number to set it; each entry is logged and can be removed individually (tap the count next to HP to expand the log).</div>
+      <div class="status">Turn order is shared across all maps, not tied to any one of them. Sorted highest first; the current turn is marked ▶. AC, HP, and reactions are GM-only. Custom columns appear on the display only when their Display toggle is on.</div>
     </div>
 
     </div><!-- /sidebar-scroll -->
@@ -301,12 +350,31 @@
   <div class="sidebar-resize-handle" id="sidebarResizeHandle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="220" aria-valuemax="560" aria-valuenow="280" tabindex="0"></div>
 
   <div class="canvas-area" id="canvasArea">
+    <button id="universalSelectBtn" class="map-action-button universal-select-button" aria-pressed="false" aria-label="Select an element on the map" title="Click to select an element; drag to move" style="display:none;">✋</button>
+    <button id="calibSnapZoomBtn" class="map-action-button" style="display:none;">Return to calibrated zoom</button>
+    <button id="nextTurnBtn" class="map-action-button initiative-next-turn" style="display:none;">Next turn · Round 1</button>
     <div class="resume-banner" id="resumeBanner" style="display:none;">
       <span id="resumeText"></span>
       <button class="primary" id="resumeBtn">Resume</button>
       <button id="discardBtn">Discard</button>
     </div>
     <canvas id="workCanvas" style="display:none;"></canvas>
+    <section id="initiativeFloatingWindow" class="initiative-floating-window" aria-label="Initiative controls" style="display:none;">
+      <header id="initiativeFloatingHeader" class="initiative-floating-header">
+        <strong>Initiative</strong>
+        <div class="initiative-floating-actions">
+          <button id="initiativeFloatingMinimize" type="button" aria-label="Minimize initiative controls" title="Minimize">−</button>
+          <button id="initiativeFloatingClose" type="button" aria-label="Close initiative controls" title="Close">×</button>
+        </div>
+      </header>
+      <div id="initiativeFloatingBody"></div>
+      <span id="initiativeFloatingResize" class="initiative-floating-resize" role="separator" aria-label="Resize initiative window" tabindex="0"></span>
+    </section>
+    <div id="initiativeLayoutOverlay" class="initiative-layout-overlay" role="group" aria-label="Initiative display layout" style="display:none;">
+      <div id="initiativeLayoutPreview"></div>
+      <button id="initiativeLayoutRotateHandle" class="initiative-layout-rotate" type="button" aria-label="Rotate initiative tracker 90 degrees" title="Rotate 90 degrees">↻</button>
+      <span id="initiativeLayoutResizeHandle" class="initiative-layout-resize" role="separator" aria-label="Resize initiative tracker" tabindex="0"></span>
+    </div>
     <div id="dungeonTooltip" class="dungeon-tooltip" role="tooltip" style="display:none;"></div>
     <div id="appStatus" class="sr-only" role="status" aria-live="polite"></div>
     <div class="empty-state" id="emptyState">Add a map image to begin — click "Add image(s)…" or drag one in here.</div>

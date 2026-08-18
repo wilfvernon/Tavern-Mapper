@@ -11,12 +11,19 @@ export function createDisplayHtml() {
     display: none; z-index: 10; white-space: nowrap;
   }
   #initiativePanel {
-    position: fixed; top: 20px; right: 20px; background: rgba(10,11,14,0.88); color: #fff;
-    padding: 14px 18px; border-radius: 10px; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-size: 15px; display: none; z-index: 10; min-width: 170px;
+    position: fixed; background: rgba(10,11,14,0.88); color: #fff;
+    padding: 10px 12px; border-radius: 10px; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; display: none; z-index: 10; min-width: 150px; transform-origin: center;
+    box-sizing: border-box; user-select: none; pointer-events: auto; cursor: default;
   }
-  #initiativePanel .init-round { font-size: 12px; color: #8b92a3; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-  #initiativePanel .init-row { padding: 4px 0; display: flex; justify-content: space-between; gap: 12px; }
+  #initiativePanel .init-round { font-size: 12px; color: #8b92a3; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #initiativePanel .init-table { display: grid; width: 100%; column-gap: clamp(6px, 2vw, 12px); align-items: center; }
+  #initiativePanel .init-row { display: contents; }
+  #initiativePanel .init-head { color: #8b92a3; font-size: 11px; text-transform: uppercase; }
+  #initiativePanel .init-cell { min-width: 0; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #initiativePanel .init-reaction { width: 1em; color: #b989ff; text-align: center; overflow: visible; }
+  #initiativePanel .init-reaction.used { color: #596172; opacity: 0.55; }
+  #initiativePanel .init-name { overflow: visible; text-overflow: clip; }
   #initiativePanel .init-current { color: #7c9cff; font-weight: 700; }
 </style></head>
 <body>

@@ -195,7 +195,7 @@ export function drawMarkerShape(context, shape, centerX, centerY, radius, color)
   context.restore();
 }
 
-export function drawMarkers(context, markers, selectedMarkerId) {
+export function drawMarkers(context, markers, selectedMarkerId, textSize = 13, textRotation = 0) {
   markers.forEach((marker) => {
     const radius = marker.size || 12;
     if (marker.id === selectedMarkerId) {
@@ -212,18 +212,21 @@ export function drawMarkers(context, markers, selectedMarkerId) {
     drawMarkerShape(context, marker.shape || 'x', marker.x, marker.y, radius, marker.color);
     if (marker.label) {
       context.save();
-      context.font = '13px -apple-system, "Segoe UI", Roboto, sans-serif';
+      context.font = `${textSize}px -apple-system, "Segoe UI", Roboto, sans-serif`;
       const textWidth = context.measureText(marker.label).width;
+      context.translate(marker.x + radius + 9, marker.y);
+      context.rotate(textRotation * Math.PI / 180);
       context.fillStyle = 'rgba(10,11,14,0.85)';
-      context.fillRect(marker.x + radius + 4, marker.y - 10, textWidth + 10, 20);
+      context.fillRect(-5, -textSize * 0.75, textWidth + 10, textSize * 1.35);
       context.fillStyle = '#ffffff';
-      context.fillText(marker.label, marker.x + radius + 9, marker.y + 4);
+      context.textBaseline = 'middle';
+      context.fillText(marker.label, 0, 0);
       context.restore();
     }
   });
 }
 
-export function drawDisplayMarkers(context, markers, camera, x, y, width, height, scale) {
+export function drawDisplayMarkers(context, markers, camera, x, y, width, height, scale, textSize = 13, textRotation = 0) {
   const visibleMarkers = markers.filter(marker => marker.visible === true);
   if (!visibleMarkers.length) return;
   context.save();
@@ -233,7 +236,7 @@ export function drawDisplayMarkers(context, markers, camera, x, y, width, height
   context.translate(x, y);
   context.scale(scale, scale);
   context.translate(-camera.x, -camera.y);
-  drawMarkers(context, visibleMarkers, null);
+  drawMarkers(context, visibleMarkers, null, textSize / scale, textRotation);
   context.restore();
 }
 
@@ -257,7 +260,7 @@ function getDungeonMask(context) {
   return buffers;
 }
 
-export function drawDungeon(context, segments, activeSegmentId, mapWidth, mapHeight) {
+export function drawDungeon(context, segments, activeSegmentId, mapWidth, mapHeight, textSize = 18) {
   const { mask, glow } = getDungeonMask(context);
   const maskContext = mask.getContext('2d');
   const glowContext = glow.getContext('2d');
@@ -318,7 +321,7 @@ export function drawDungeon(context, segments, activeSegmentId, mapWidth, mapHei
     context.drawImage(mask, 0, 0);
     context.restore();
 
-    const label = dungeonLabelLayout(segment);
+    const label = dungeonLabelLayout(segment, textSize);
     if (label) {
       context.save();
       context.font = `700 ${label.fontSize}px -apple-system, "Segoe UI", Roboto, sans-serif`;
@@ -379,6 +382,40 @@ export function applyFogAction(context, action, width, height) {
   let previous = first;
   rest.forEach((point) => {
     paintFogStroke(context, previous.x, previous.y, point.x, point.y, action.brushSize, action.revealing, action.softEdge);
+    previous = point;
+  });
+}
+
+export function paintDrawingStroke(context, startX, startY, endX, endY, brushSize, color, erasing) {
+  const distance = Math.hypot(endX - startX, endY - startY);
+  const step = Math.max(1, brushSize / 4);
+  const steps = Math.max(1, Math.ceil(distance / step));
+  context.save();
+  context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
+  context.fillStyle = color;
+  const radius = brushSize / 2;
+  for (let index = 0; index <= steps; index++) {
+    const position = index / steps;
+    const x = startX + (endX - startX) * position;
+    const y = startY + (endY - startY) * position;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
+}
+
+export function applyDrawingAction(context, action, width, height) {
+  if (action.type === 'clear') {
+    context.clearRect(0, 0, width, height);
+    return;
+  }
+  if (action.type !== 'stroke' || !action.points.length) return;
+  const [first, ...rest] = action.points;
+  paintDrawingStroke(context, first.x, first.y, first.x, first.y, action.brushSize, action.color, action.erasing);
+  let previous = first;
+  rest.forEach((point) => {
+    paintDrawingStroke(context, previous.x, previous.y, point.x, point.y, action.brushSize, action.color, action.erasing);
     previous = point;
   });
 }

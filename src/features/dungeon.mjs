@@ -22,7 +22,7 @@ export function nextDungeonNumber(segments) {
   return segments.reduce((highest, segment) => Math.max(highest, Number(segment.number) || 0), 0) + 1;
 }
 
-export function dungeonLabelLayout(segment) {
+export function dungeonLabelLayout(segment, preferredFontSize = 18) {
   let bestBounds = null;
   for (const stroke of segment.strokes) {
     if (!stroke.points.length) continue;
@@ -55,10 +55,10 @@ export function dungeonLabelLayout(segment) {
   const numberLabel = `#${segment.number || '?'}`;
   const availableWidth = Math.max(1, width - 12);
   const availableHeight = Math.max(1, height - 8);
-  const fullSize = Math.min(18, availableHeight, availableWidth / Math.max(1, fullLabel.length * 0.58));
+  const fullSize = Math.min(preferredFontSize, availableHeight, availableWidth / Math.max(1, fullLabel.length * 0.58));
   const useFullLabel = fullSize >= 9;
   const label = useFullLabel ? fullLabel : numberLabel;
-  const fontSize = Math.max(8, Math.min(18, availableHeight, availableWidth / Math.max(1, label.length * 0.58)));
+  const fontSize = Math.max(8, Math.min(preferredFontSize, availableHeight, availableWidth / Math.max(1, label.length * 0.58)));
 
   return {
     x: (minimumX + maximumX) / 2,

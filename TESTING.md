@@ -8,6 +8,7 @@ The end-to-end suite treats rendered browser pixels as the public contract. It d
 |---|---|
 | Map loading, switching, 6144px downscaling, bounded control preview | End-to-end |
 | Fog painting, opacity separation, undo | End-to-end framebuffer assertions |
+| Freeform pen/eraser, private/display visibility, independent undo, clear, and session restore | End-to-end framebuffer/state assertions |
 | Grid state and per-map isolation | End-to-end |
 | Marker opt-in display, hidden-marker privacy, and dungeon display exclusion | Before/after display framebuffer assertions |
 | Marker/AoE/dungeon selection glow and interaction cursors | End-to-end framebuffer and cursor assertions |
@@ -16,11 +17,12 @@ The end-to-end suite treats rendered browser pixels as the public contract. It d
 | Accessible names/states, keyboard rows/resize/tabs, live status, narrow layout, touch pointer input | End-to-end assertions |
 | Camera state, dimmed viewport, direct zoom/readout, center/fit, pointer controls, and undo | End-to-end framebuffer/state assertions |
 | Inline map rename, keyboard map switching, and session-name persistence | End-to-end |
-| AoE geometry, editing, visibility, calibration | Unit and end-to-end framebuffer assertions |
+| Resolution-independent annotation sizing and display-only 90° marker-label rotation | Targeted framebuffer and session assertions |
+| AoE geometry, editing, visibility, inverse zoom-locked calibration, and zoom-only snap around current center | Unit and end-to-end framebuffer/state assertions |
 | Display DPR sizing | End-to-end at DPR 2 |
 | Session export/import and malformed data | End-to-end |
 | Autosave and resume | End-to-end with IndexedDB |
-| Dice and initiative display output | End-to-end |
+| Dice output and initiative initial score placement/manual order/score-triggered re-sort/collapse/HP operations/floating controller/map Next Turn/control-overlay layout/display-only rotation/privacy | End-to-end state/popup assertions |
 | Test runner failure propagation | Nonzero process exit on any failed case |
 
 ## Required before a WebGL/WebGPU renderer becomes default

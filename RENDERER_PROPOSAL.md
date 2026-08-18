@@ -24,7 +24,7 @@ The near-term Canvas 2D path is implemented:
 - Fog undo stored as compact replayable actions instead of full-canvas snapshots.
 - High-frequency interaction redraws coalesced by animation frame.
 - Reusable `npm run benchmark:6k` command and checked-in `benchmark-6k.json` report.
-- Current verification: 14 module contracts and 127 browser behavior tests.
+- Current test inventory: 15 module contracts and 134 browser behavior cases.
 
 The current benchmark verifies 6144×4096 import, fog, camera, popup display, autosave, export, restore, and two loaded maps without page errors. It also records a minimum decoded map+fog memory floor of approximately 192 MiB per 6144×4096 slide. Timings from the headless dev container are regression evidence, not a substitute for target-laptop measurements.
 
@@ -156,6 +156,7 @@ A renderer-neutral scene should include:
   map,
   camera,
   fog,
+  drawing,
   grid,
   aoeShapes,
   markers,
@@ -271,6 +272,7 @@ Suggested WebGL2 implementation:
 
 - Map: textured tile quads.
 - Fog: sampled mask texture or tiled mask textures.
+- Freeform drawing: transparent color texture or replayed vector strokes, composited only when display-visible.
 - Grid: shader-generated grid or line geometry.
 - AoE: small dynamic vertex buffers.
 - Markers: control renderer plus only markers explicitly opted into the display.
@@ -470,7 +472,7 @@ Only implement WebGPU if profiling identifies a meaningful limitation that WebGL
 
 ## Current and Required Test Infrastructure
 
-Current coverage includes 127 browser behavior tests, 14 direct module contracts, browser-composited screenshots, and narrow pixel assertions. It protects workflows, map renaming, camera framing controls, display privacy, selection rendering, dungeon compositing, marker visibility/size, dungeon numbering/tooltips, accessibility semantics, keyboard interaction, touch-pointer input, responsive layout, 6K downscaling, persistence, and popup behavior.
+Current coverage includes 134 browser behavior cases, 15 direct module contracts, browser-composited screenshots, and narrow pixel assertions. It protects workflows, freeform drawing/erasing/privacy, map renaming, camera framing controls, display privacy, selection rendering, dungeon compositing, marker visibility/size, dungeon numbering/tooltips, accessibility semantics, keyboard interaction, touch-pointer input, responsive layout, 6K downscaling, persistence, and popup behavior.
 
 It does not currently provide:
 

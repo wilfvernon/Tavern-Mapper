@@ -23,11 +23,13 @@ The sidebar is a fixed header (display button + tabs), an independently scrollin
 
 Tabs are organized into three categories, plus **Maps** standing alone as the entry point:
 
-- **Map** — Fog, Markers, Grid, Dungeon (things drawn directly on the map surface)
+- **Map** — Fog, Draw, Markers, Grid, Dungeon (things drawn directly on the map surface)
 - **Display** — Camera, Calibrate (how the map is framed and scaled)
 - **Tools** — AoE, Dice, Init (gameplay utilities)
 
 Clicking a category shows only its own tabs and remembers which one you were last on, so switching between categories doesn't reset your place. The sidebar itself can be resized by dragging the handle on its right edge.
+
+The map's Hand selector can be dragged to any comfortable position in the workspace. Its position persists with the session; a click or keyboard activation still arms the one-shot universal selector.
 
 ## Maps (slideshow)
 
@@ -35,6 +37,7 @@ Clicking a category shows only its own tabs and remembers which one you were las
 - Each map keeps its own independent fog, markers, camera framing, grid, calibration, AoE shapes, and dungeon segments — switching away and back preserves everything exactly as left.
 - Reorder maps by dragging their thumbnails; Prev/Next buttons cycle through them.
 - Rename maps inline from the slideshow; names persist in exported and autosaved sessions.
+- Global Annotation Text Size keeps marker and dungeon labels readable across small and 6K maps. Rotate Display Text turns display-visible marker labels in 90° steps while control labels remain upright. Both settings persist with the session.
 - Removing a map requires confirmation — there is no undo for it.
 - New maps default to fully revealed fog and no grid.
 - Uploaded images are downscaled to a maximum of 6144px on the longest side. The always-full-map control view uses a bounded 2400px preview, while map coordinates, fog data, saved images, and display-camera crops retain the full imported resolution.
@@ -53,11 +56,22 @@ Clicking a category shows only its own tabs and remembers which one you were las
 - Marker size works the same way: the slider sets the creation default when nothing is selected and resizes the selected marker otherwise. Size is saved per marker and applies on both control and display screens.
 - Hovering a marker uses a grab cursor, dragging uses grabbing, and the selected marker glows.
 
+## Freeform Drawing
+
+- Draw colored freeform annotations directly over each map with an adjustable brush.
+- Switch to Erase to remove parts of the drawing without affecting the underlying map or fog.
+- Drawings are private by default and can be toggled onto the display per map.
+- Clear removes the entire drawing layer and can be immediately undone.
+- Drawing has its own per-map undo history, independent from Fog and the other tools.
+- The full-resolution drawing layer is created only after a map is drawn on, so unused maps do not pay the extra canvas-memory cost.
+
 ## Camera (what the display screen frames)
 
 - The display viewport is a bright labeled rectangle, with the map outside it dimmed so framing is immediately visible.
+- New maps default to a centered 16:9 TV frame. Camera settings also offer 16:10, 4:3, 3:2, 21:9, Source image, and Current framing; the choice is stored per map.
+- Aspect ratio and zoom are independent: changing ratio reshapes the frame at the same zoom percentage, while zoom changes scale without changing ratio. Only Fit aspect resets zoom to 100%.
 - Drag inside to pan, drag a corner to resize (aspect-locked), click outside to recenter, or scroll/pinch to zoom at the cursor.
-- A direct Display Zoom slider shows the current percentage, with grouped zoom out, fit-map, zoom-in, and center-view commands.
+- A direct Display Zoom slider shows the current percentage, with grouped zoom out, Fit aspect, zoom-in, and center-view commands. Fit aspect restores the largest centered frame using the selected ratio without distorting the map.
 - Standard resize cursors on the corners, a move cursor inside the box, reset to default crosshair outside it and when leaving the tab.
 - Your own editing view always shows the full map, unaffected by the camera; it only controls what the display shows.
 
@@ -74,8 +88,8 @@ This determines how many pixels equal a foot on a given map, which is what every
 - **Manual entry** — a raw "pixels per 5ft square" number.
 - **Draw a line** — pick a reference length (5/10/30/custom ft), drag a line on the control canvas. It renders live on both screens at whatever zoom the display currently is, so you can hold a physical ruler up to the TV and calibrate against what's actually showing.
 - **Reference square** — same reference-length picker; a dashed square appears centered on whatever the camera currently frames, and you nudge the manual number while watching it resize on the TV.
-- **Lock to zoom** — captures the calibration and camera framing as a reference point, then continuously auto-adjusts calibration every time you zoom afterward, so a real-world foot stays the same physical size on the TV regardless of zoom level.
-- **Snap to calibrated zoom** — returns to the exact framing used when you locked it, not just an equivalent scale.
+- **Lock to zoom** — unlocked calibration compensates for camera zoom so AoEs retain the same apparent TV size as at calibration time. Locking freezes map/control geometry instead, so normal camera projection makes AoEs grow on the TV when zooming in and shrink when zooming out.
+- **Return to calibrated zoom** — a map-overlay button appears only when the current zoom differs from the locked reference. It restores the reference zoom level around the current camera center without restoring the old camera position.
 
 ## AoE (area-of-effect templates)
 
@@ -107,25 +121,32 @@ This determines how many pixels equal a foot on a given map, which is what every
 
 ## Initiative
 
-- Add combatants with a name and initiative score; sorted automatically, highest first, with the current turn marked `▶`.
-- Round counter and Next Turn lead the panel since they're the most-used control during play; Add Combatant sits at the bottom since it's a setup-time action.
+- Add combatants with a name and initiative score; new cards are initially inserted by score, highest first, with ties kept in creation order.
+- Drag cards by their handles to manually resolve ties or override score order. Manual order persists until a score is edited; committing a score re-sorts all cards by score, using the previous manual order to resolve ties. Cards can then be dragged again.
+- Initiative scores remain editable inline. Each card is compact by default and expands to show AC/HP details.
+- Add named text columns for encounter-specific information such as conditions or concentration. Every column has its own Display toggle; hidden columns remain GM-only.
+- Each combatant has a purple four-point reaction button. Marking it records that the reaction was used, and it automatically becomes available when that combatant's next turn starts.
+- Expanded cards provide explicit `+`, `−`, and `=` HP buttons: enter an amount, then add, subtract, or set HP. Every operation remains in the removable HP log.
+- Next Turn is always available as a map-overlay command whenever combatants exist, regardless of the active sidebar tool.
 - AC (plain number) and HP per combatant, both optional and GM-only (never shown on the display, even when the tracker itself is).
-- HP is a **log**, not a single mutable number: type `+N`/`-N` for damage/healing or a plain number to set it outright, and each entry becomes a small removable pill. The current total is computed by replaying the log, so deleting a bad entry recalculates automatically rather than requiring reverse arithmetic. The log is collapsed behind a `▾ N` count badge by default and auto-expands right after you log something.
-- "Show on display" reveals just the turn order and names — never AC/HP.
+- HP is a **log**, not a single mutable number: set the initial value, then use `+`, `−`, or `=` for later changes. Each entry becomes a removable pill, and deleting a bad entry recalculates the total automatically. History stays collapsed behind a clearly labeled count until opened.
+- "Show on display" reveals turn order, reaction availability, names, and only the custom columns explicitly marked for display — never AC or HP.
+- The Initiative button beneath Open Display opens the controller without changing the active map tool. A control-only upright tracker preview appears over the map while the controller is open; drag it to position the display tracker, resize from its corner, or rotate the display in exact 90° steps.
+- The Initiative controller is a draggable, resizable floating window over the control map. It remains open across tab changes, can be minimized or closed, and its geometry persists with the session.
 
-## Shared color picker (Markers, AoE, Dungeon)
+## Shared color picker (Draw, Markers, AoE, Dungeon)
 
 - The original 5 preset swatches, plus a native color-wheel input (opens the OS/browser's full picker), plus a "Recently Used" row.
-- The recent-colors list is **shared** across all three contexts — a color picked for a marker is immediately available for an AoE shape or a dungeon segment. It's session-only, not saved with the map data.
+- The recent-colors list is **shared** across drawing, markers, AoE, and Dungeon — a color picked in one context is immediately available in the others. It's session-only, not saved with the map data.
 - Capped at 8 entries, deduplicated (re-picking a recent color moves it to the front).
 
 ## Undo
 
-Five independent undo histories per map — Fog, Markers, Camera, Grid, and a combined AoE/Calibrate history (since calibration is stored as part of AoE's per-map data) — plus Dungeon's own. The Undo button relabels itself to show which history is active and disables itself on tabs with no undo concept (Maps, Dice, Init). Switching tabs never discards another tab's history.
+Independent undo histories are maintained per map for Fog, Draw, Markers, Camera, Grid, Dungeon, and a combined AoE/Calibrate history. The Undo button relabels itself for the active tool and disables itself on tabs with no undo concept (Maps, Dice, Init). Switching tabs never discards another tool's history.
 
 ## Session persistence
 
-- **Save/Load session** — always reachable from the sidebar footer regardless of active tab. Produces one JSON file with every map, its fog, markers, camera, grid, AoE shapes, calibration state, and dungeon segments, plus shared settings (fog opacity, grid color).
+- **Save/Load session** — always reachable from the sidebar footer regardless of active tab. Produces one JSON file with every map, its fog, drawing layer/visibility, markers, camera, grid, AoE shapes, calibration state, and dungeon segments, plus shared settings (fog opacity, grid color).
 - **Silent autosave** — runs in the browser's IndexedDB a second or so after any change, with a one-click "Resume previous session?" banner on reload. This is a crash-recovery safety net, separate from the exportable file.
 - **Defensive loading** — session files are sanitized on load; corrupted or hand-edited values are clamped to safe defaults rather than crashing or hanging the app.
 
@@ -140,6 +161,7 @@ Five independent undo histories per map — Fog, Markers, Camera, Grid, and a co
 | Layer | Control screen | Display screen |
 |---|---|---|
 | Map + fog | Yes (fog dimmable, control-only) | Yes (fog always fully opaque) |
+| Freeform drawing | Yes | Only when the map's drawing layer is marked visible |
 | Grid | Yes | Yes |
 | AoE shapes | Yes (hidden ones shown dashed) | Only shapes marked visible |
 | Dungeon segments | Yes | Never |
@@ -148,9 +170,10 @@ Five independent undo histories per map — Fog, Markers, Camera, Grid, and a co
 
 ## Explicitly out of scope
 
-- No player tokens or a full virtual-tabletop feature set — this is fog/grid/markers/AoE/dungeon-notes, not a VTT.
+- No player tokens or a full virtual-tabletop feature set — this is fog/drawing/grid/markers/AoE/dungeon-notes, not a VTT.
 - No networked or multi-device play — one laptop plus one HDMI-connected screen.
 - No zoom/pan on the control view itself — only the display camera zooms; your editing view always shows the full map.
+- Browser-native pinch zoom is suppressed over the map so it cannot scale the toolbar. In Camera mode, wheel/trackpad pinch over the map changes the display camera instead; the sidebar remains fixed.
 
 ---
 
@@ -166,8 +189,6 @@ The build rejects external script, stylesheet, module, and network references so
 
 - `src/` is the authored application source.
 - `tavern-mapper.html` is generated by `npm run build`; do not edit it by hand.
-- `tavern-mapper_6.html` is the untouched pre-refactor reference. It is not current source or a second release.
-- `npm run migrate:legacy` is a guarded recovery command that overwrites modular source from the historical file. It is not part of normal development.
 
 ## Source layout
 
@@ -214,8 +235,8 @@ Then open `tavern-mapper.html` directly. On this VS Code/dev-container setup:
 ## Validation
 
 ```sh
-npm run test:unit   # 14 direct module contracts
-npm test            # rebuild + 127 sequential Playwright behavior tests
+npm run test:unit   # 15 direct module contracts
+npm test            # rebuild + 134 sequential Playwright behavior tests
 npm run check       # build + unit + browser suites
 ```
 

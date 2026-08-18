@@ -7,7 +7,6 @@
     "benchmark:6k": "npm run build && node scripts/benchmark-6k.mjs",
     "build": "node scripts/build.mjs",
     "check": "npm run build && npm run test:unit && node test-suite.js",
-    "migrate:legacy": "node scripts/extract-legacy-source.mjs",
     "test": "node test-suite.js",
     "test:unit": "node --test tests/*.test.mjs",
     "pretest": "npm run build && playwright install chromium"
